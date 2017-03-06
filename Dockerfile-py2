@@ -1,0 +1,4 @@
+FROM python:2-slim
+
+COPY requirements.dev requirements
+RUN pip install -r requirements
