@@ -48,6 +48,9 @@ class AggregatorBase(object):
     def _value(self):
         return self._internal_value
 
+    def __len__(self):
+        return len(self._value())
+
     def _json(self):
         return self._value()
 
@@ -57,6 +60,13 @@ class Aggregator(AggregatorBase):
         self._internal_value = initial
         self._aggregator = aggregator
         self._prefilter = _prefilter
+
+
+class SumField(Aggregator):
+    def __init__(self, field_name, _prefilter=None):
+        def aggregator(v, obj):
+            return v + getattr(obj, field_name)
+        super(SumField, self).__init__(0, aggregator, _prefilter)
 
 
 class List(AggregatorBase):
@@ -73,10 +83,10 @@ class List(AggregatorBase):
 class Struct(AggregatorBase):
     def __init__(self, **kwargs):
         self._prefilter = kwargs.pop('_prefilter', None)
-
         self._aggregator_fields = {}
         self._computed_fields = {}
         self._other_fields = {}
+        self._all_fields = list(kwargs.keys())
         for k, v in kwargs.items():
             if isinstance(v, AggregatorBase):
                 self._aggregator_fields[k] = v
@@ -84,61 +94,71 @@ class Struct(AggregatorBase):
                 self._computed_fields[k] = v
             else:
                 self._other_fields[k] = v
-        self._internal_value = copy.deepcopy(self._aggregator_fields)
+        self._internal_value = self._get_initial_value()
+
+    def _get_initial_value(self):
+        return copy.deepcopy(self._aggregator_fields)
 
     def _aggregate(self, obj):
         for field_name in self._aggregator_fields:
             self._internal_value[field_name]._feedobject(obj)
 
     def __getattr__(self, field_name):
-        if field_name in self._internal_value:
-            return self._internal_value[field_name]
+        if field_name[0] != '_':
+            if field_name in self._aggregator_fields:
+                return self._internal_value[field_name]
+            if field_name in self._computed_fields:
+                return self._computed_fields[field_name]._fnc(self)
+            if field_name in self._other_fields:
+                return self._other_fields[field_name]
         msg = '%s object has no attribute %s'
         raise AttributeError(msg % (type(self).__name__, field_name))
 
     def _value(self):
-        ret = self._internal_value
-        computed = self._computed_fields.items()
-        try:
-            computed_values = {k: v._fnc(self) for k, v in computed}
-        except Exception as e:
-            raise ComputationError(e)
-        ret.update(computed_values)
-        ret.update(self._other_fields.items())
-        return ret
+        return {field: getattr(self, field) for field in self._all_fields}
 
 
-class GroupBy(AggregatorBase):
+class GroupBy(Struct):
     def __init__(self, **kwargs):
         self._grouping = kwargs.pop('_grouping', None)
-        self._prefilter = kwargs.pop('_prefilter', None)
+        self._postfilter = kwargs.pop('_postfilter', None)
         self._fields = kwargs
-        self._internal_value = OrderedDict()
+        super(GroupBy, self).__init__(**kwargs)
+
+    def _get_initial_value(self):
+        return OrderedDict()
 
     def _get_const_fields(self, key):
         return {'groupKey': key}
 
+    def _get_key(self, obj):
+        return self._grouping(obj) if self._grouping else None
+
     def _aggregate(self, obj):
-        key = self._grouping(obj)
+        key = self._get_key(obj)
         try:
             bucket = self._internal_value[key]
         except KeyError:
-            kwargs = copy.deepcopy(self._fields)
+            kwargs = self._fields.copy()
             kwargs.update(self._get_const_fields(key))
             bucket = Struct(**kwargs)
             self._internal_value[key] = bucket
         bucket._feedobject(obj)
 
-    def _get(self, key):
+    def _get(self, obj):
+        key = self._get_key(obj)
         return self._internal_value[key]
 
     def _value(self):
+        if self._postfilter:
+            return [r for r in self._internal_value.values()
+                    if self._postfilter(r)]
         return list(self._internal_value.values())
 
 
 class GroupByFields(GroupBy):
     def __init__(self, _groupfields, **kwargs):
-        self._groupkey_fields = _groupfields
+        self._groupfields = _groupfields
 
         def _grouping(obj):
             return tuple([(getattr(obj, f)) for f in _groupfields])
@@ -146,4 +166,7 @@ class GroupByFields(GroupBy):
         super(GroupByFields, self).__init__(**kwargs)
 
     def _get_const_fields(self, key):
-        return {k: key[n] for n, k in enumerate(self._groupkey_fields)}
+        return {k: key[n] for n, k in enumerate(self._groupfields)}
+
+    def _get(self, **kwargs):
+        return super(GroupByFields, self)._get(DataClass(**kwargs))
