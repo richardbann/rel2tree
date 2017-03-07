@@ -121,19 +121,6 @@ class SimpleTestCase(unittest.TestCase):
             ),
         )
 
-        # import random
-        # clients = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-        # currencies = ['EUR', 'PLN', 'RON']
-        # for i in xrange(40000):
-        #     clientID = random.choice(clients)
-        #     currencyID = random.choice(currencies)
-        #     testaggregator._feed(
-        #         clientID=clientID,
-        #         currencyID=currencyID,
-        #         free=random.randint(0, 100),
-        #         credit=random.randint(0, 100),
-        #     )
-
         a._feed(clientID=111, currencyID='EUR', free=123)
         a._feed(clientID=111, currencyID='EUR', credit=50)
         a._feed(clientID=111, currencyID='PLN', free=20)
@@ -152,3 +139,63 @@ class SimpleTestCase(unittest.TestCase):
         self.assertEqual(len(cli._get(clientID=111)), 4)
         self.assertEqual(len(cli._get(clientID=111).currencies), 1)
         self.assertEqual(len(cli._get(clientID=333).currencies), 2)
+
+
+class LongTest(unittest.TestCase):
+    def test_many(self):
+        def include_client(client):
+            return len(client.free._value()) + len(client.credit._value())
+
+        def get_currencies(client):
+            free = client.free._value()
+            credit = client.credit._value()
+            return list(set([f.currencyID for f in free] +
+                            [c.currencyID for c in credit]))
+
+        a = rel2tree.Struct(
+            type='BALANCE',
+            balance=rel2tree.Struct(
+                _prefilter=lambda x: x.clientID != 444,
+                clients=rel2tree.GroupByFields(
+                    ('clientID',),
+                    _postfilter=include_client,
+                    free=rel2tree.GroupByFields(
+                        ('currencyID',),
+                        _prefilter=lambda obj: hasattr(obj, 'free'),
+                        _postfilter=lambda x: x.amount._value(),
+                        amount=rel2tree.SumField('free'),
+                    ),
+                    credit=rel2tree.GroupByFields(
+                        ('currencyID',),
+                        _prefilter=lambda obj: hasattr(obj, 'credit'),
+                        _postfilter=lambda x: x.amount._value(),
+                        amount=rel2tree.SumField('credit'),
+                    ),
+                    currencies=rel2tree.Computed(get_currencies),
+                ),
+            ),
+        )
+
+        import random
+        clients = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+        currencies = ['EUR', 'PLN', 'RON']
+        i = 0
+        while i < 50000:
+            clientID = random.choice(clients)
+            currencyID = random.choice(currencies)
+            free = random.randint(100, 1000)
+            credit = random.randint(100, 1000)
+            a._feed(
+                clientID=clientID,
+                currencyID=currencyID,
+                free=free,
+                credit=credit,
+            )
+            i += 1
+
+        # self.assertEqual(len(a), 2)
+        # cli = a.balance.clients
+        # self.assertEqual(len(cli), 2)
+        # self.assertEqual(len(cli._get(clientID=111)), 4)
+        # self.assertEqual(len(cli._get(clientID=111).currencies), 1)
+        # self.assertEqual(len(cli._get(clientID=333).currencies), 2)
