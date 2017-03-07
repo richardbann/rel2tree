@@ -43,7 +43,7 @@ class SimpleTestCase(unittest.TestCase):
             max=rel2tree.Computed(
                 lambda x: max(x.numbers._value())
             ),
-            something=2,
+            something=rel2tree.Constant(2),
         )
         a._feedmany([1, 2, 3, 4, 5])
         s = json.dumps(a, cls=encoder.JSONEncoder)
@@ -94,11 +94,11 @@ class SimpleTestCase(unittest.TestCase):
         def get_currencies(client):
             free = client.free._value()
             credit = client.credit._value()
-            return list(set([f.currencyID for f in free] +
-                            [c.currencyID for c in credit]))
+            return list(set([f.currencyID._value() for f in free] +
+                            [c.currencyID._value() for c in credit]))
 
         a = rel2tree.Struct(
-            type='BALANCE',
+            type=rel2tree.Constant('BALANCE'),
             balance=rel2tree.Struct(
                 _prefilter=lambda x: x.clientID != 444,
                 clients=rel2tree.GroupByFields(
@@ -132,6 +132,7 @@ class SimpleTestCase(unittest.TestCase):
         a._feed(clientID=333, currencyID='EUR', free=123)
         a._feed(clientID=333, currencyID='GBP', free=200)
         a._feed(clientID=444, currencyID='EUR', free=2000)
+        print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
 
         self.assertEqual(len(a), 2)
         cli = a.balance.clients
@@ -139,6 +140,27 @@ class SimpleTestCase(unittest.TestCase):
         self.assertEqual(len(cli._get(clientID=111)), 4)
         self.assertEqual(len(cli._get(clientID=111).currencies), 1)
         self.assertEqual(len(cli._get(clientID=333).currencies), 2)
+
+    def test_field_ordering(self):
+        a = rel2tree.Struct(
+            a=rel2tree.Constant(1),
+            b=rel2tree.Constant(2),
+            c=rel2tree.Constant(3),
+            d=rel2tree.Struct(
+                d1=rel2tree.Constant('d1'),
+                d2=rel2tree.Constant('d2'),
+            ),
+            calc=rel2tree.Computed(lambda x: x.a._value() + x.b._value()),
+            g=rel2tree.GroupByFields(
+                ('x', 'y'),
+                sum=rel2tree.SumField('q')
+            )
+        )
+
+        a._feed(x=1, y=1, q=10)
+        a._feed(x=1, y=2, q=10)
+        a._feed(x=1, y=1, q=3)
+        print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
 
 
 @unittest.skip('only for performance measuring')
@@ -150,11 +172,11 @@ class LongTest(unittest.TestCase):
         def get_currencies(client):
             free = client.free._value()
             credit = client.credit._value()
-            return list(set([f.currencyID for f in free] +
-                            [c.currencyID for c in credit]))
+            return list(set([f.currencyID._value() for f in free] +
+                            [c.currencyID._value() for c in credit]))
 
         a = rel2tree.Struct(
-            type='BALANCE',
+            type=rel2tree.Constant('BALANCE'),
             balance=rel2tree.Struct(
                 _prefilter=lambda x: x.clientID != 444,
                 clients=rel2tree.GroupByFields(
@@ -193,5 +215,4 @@ class LongTest(unittest.TestCase):
                 credit=credit,
             )
             i += 1
-
         print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
