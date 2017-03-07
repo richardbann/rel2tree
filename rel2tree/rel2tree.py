@@ -78,8 +78,16 @@ class Computed(NoFeedMixin, AggregatorBase):
 
 class Constant(NoFeedMixin, AggregatorBase):
     def __init__(self, value):
-        self._internal_value = value
+        self._set_value(value)
         super(Constant, self).__init__()
+
+    def _set_value(self, value):
+        self._internal_value = value
+
+
+class GroupingField(Constant):
+    def __init__(self):
+        super(GroupingField, self).__init__(None)
 
 
 class Aggregator(AggregatorBase):
@@ -148,18 +156,19 @@ class Struct(AggregatorBase):
         return OrderedDict(fl)
 
 
-class GroupBy(Struct):
+class GroupByBase(Struct):
+    _postfilter = None
+    _grouping = None
+
     def __init__(self, **kwargs):
-        self._grouping = kwargs.pop('_grouping', None)
-        self._postfilter = kwargs.pop('_postfilter', None)
         self._fields = kwargs
-        super(GroupBy, self).__init__(**kwargs)
+        super(GroupByBase, self).__init__(**kwargs)
 
     def _get_initial_value(self):
-        return OrderedDict()
+        return OrderedDict()  # preserve insertion order
 
-    def _get_const_fields(self, key):
-        return {'groupKey': Constant(key)}
+    def _add_const_fields(self, kwargs, key):
+        kwargs.update({'groupKey': Constant(key)})
 
     def _get_key(self, obj):
         return self._grouping(obj) if self._grouping else None
@@ -170,7 +179,7 @@ class GroupBy(Struct):
             bucket = self._internal_value[key]
         except KeyError:
             kwargs = self._fields.copy()
-            kwargs.update(self._get_const_fields(key))
+            self._add_const_fields(kwargs, key)
             bucket = Struct(**kwargs)
             self._internal_value[key] = bucket
         bucket._feedobject(obj)
@@ -186,17 +195,26 @@ class GroupBy(Struct):
         return list(self._internal_value.values())
 
 
-class GroupByFields(GroupBy):
-    def __init__(self, _groupfields, **kwargs):
-        self._groupfields = _groupfields
+class GroupBy(GroupByBase):
+    def __init__(self, **kwargs):
+        self._grouping = kwargs.pop('_grouping', None)
+        self._postfilter = kwargs.pop('_postfilter', None)
+        super(GroupBy, self).__init__(**kwargs)
 
-        def _grouping(obj):
-            return tuple([(getattr(obj, f)) for f in _groupfields])
-        kwargs.update({'_grouping': _grouping})
+
+class GroupByFields(GroupByBase):
+    def _grouping(self, obj):
+        return tuple([getattr(obj, k) for k in self._grouping_fields])
+
+    def __init__(self, **kwargs):
+        self._postfilter = kwargs.pop('_postfilter', None)
+        self._grouping_fields = [k for k, v in kwargs.items()
+                                 if isinstance(v, GroupingField)]
         super(GroupByFields, self).__init__(**kwargs)
 
-    def _get_const_fields(self, key):
-        return {k: Constant(key[n]) for n, k in enumerate(self._groupfields)}
+    def _add_const_fields(self, kwargs, key):
+        for i, field in enumerate(self._grouping_fields):
+            kwargs[field]._set_value(key[i])
 
     def _get(self, **kwargs):
         return super(GroupByFields, self)._get(DataClass(**kwargs))
