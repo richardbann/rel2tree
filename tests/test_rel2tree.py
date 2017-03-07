@@ -141,6 +141,7 @@ class SimpleTestCase(unittest.TestCase):
         self.assertEqual(len(cli._get(clientID=333).currencies), 2)
 
 
+@unittest.skip('only for performance measuring')
 class LongTest(unittest.TestCase):
     def test_many(self):
         def include_client(client):
@@ -193,9 +194,4 @@ class LongTest(unittest.TestCase):
             )
             i += 1
 
-        # self.assertEqual(len(a), 2)
-        # cli = a.balance.clients
-        # self.assertEqual(len(cli), 2)
-        # self.assertEqual(len(cli._get(clientID=111)), 4)
-        # self.assertEqual(len(cli._get(clientID=111).currencies), 1)
-        # self.assertEqual(len(cli._get(clientID=333).currencies), 2)
+        print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
