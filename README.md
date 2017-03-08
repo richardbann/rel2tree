@@ -1,5 +1,5 @@
 ### rel2tree
-Convert relational data to tree-like structure (JSON). Aggregate, filter your
+Convert relational data to tree-like structure like `JSON`. Aggregate, filter your
 data, make custom computation.
 
 ## What is this?
@@ -12,7 +12,7 @@ a `/balance` api endpoint that outputs the following result:
     "balances": [
       {
         "clientID": 111,
-        "free": [
+        "available": [
           {
             "currencyID": "EUR",
             "amount": 125
@@ -30,7 +30,7 @@ a `/balance` api endpoint that outputs the following result:
       },
       {
         "clientID": 333,
-        "free": [
+        "available": [
           {
             "currencyID": "EUR",
             "amount": 123
