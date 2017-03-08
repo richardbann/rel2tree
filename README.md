@@ -1,4 +1,4 @@
-### rel2tree
+# rel2tree
 Convert relational data to tree-like structure like `JSON`. Aggregate, filter your
 data, make custom computation.
 
@@ -61,7 +61,9 @@ a `/balance` api endpoint that outputs the following result:
 ```
 
 ## Install
-TODO
+```
+pip install rel2tree
+```
 
 ## Usage
 TODO
