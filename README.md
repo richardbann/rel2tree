@@ -1,15 +1,13 @@
-rel2tree
-========
+### rel2tree
 Convert relational data to tree-like structure (JSON). Aggregate, filter your
 data, make custom computation.
 
-What is this?
--------------
+## What is this?
 Let's suppose you run a business where clients can hold money and can have
 approved credits in diffrent currencies. You may want to generate
-a ``/balance`` api endpoint that outputs the following result:
+a `/balance` api endpoint that outputs the following result:
 
-.. code:: json
+```JSON
   {
     "balances": [
       {
@@ -60,11 +58,10 @@ a ``/balance`` api endpoint that outputs the following result:
       }
     ]
   }
+```
 
-Install
--------
+## Install
 TODO
 
-Usage
------
+## Usage
 TODO
