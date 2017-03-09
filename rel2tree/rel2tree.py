@@ -1,5 +1,6 @@
 # TODO: magic: len, iter, etc.
 # TODO: List should be a subclass of Struct
+# TODO: List and GroupBy ordering
 
 import copy
 from collections import OrderedDict

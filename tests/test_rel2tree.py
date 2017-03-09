@@ -1,5 +1,6 @@
 import unittest
 import json
+import decimal
 
 from rel2tree import rel2tree
 from rel2tree import encoder
@@ -229,8 +230,8 @@ class LongTest(unittest.TestCase):
         while i < 50000:
             clientID = random.choice(clients)
             currencyID = random.choice(currencies)
-            free = random.randint(100, 1000)
-            credit = random.randint(100, 1000)
+            free = decimal.Decimal(random.randint(100, 1000))
+            credit = decimal.Decimal(random.randint(100, 1000))
             a._feed({
                 'clientID': clientID,
                 'currencyID': currencyID,
@@ -238,4 +239,4 @@ class LongTest(unittest.TestCase):
                 'credit': credit,
             })
             i += 1
-        print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
+        print(json.dumps(a, cls=encoder.DecimalJSONEncoder, indent=2))

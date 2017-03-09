@@ -22,3 +22,7 @@ class DecimalEncodeMixin(object):
 
 class JSONEncoder(JSONAttrMixin, json.JSONEncoder):
     pass
+
+
+class DecimalJSONEncoder(DecimalEncodeMixin, JSONEncoder):
+    pass
