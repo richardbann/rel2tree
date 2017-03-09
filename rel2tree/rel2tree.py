@@ -1,5 +1,4 @@
 # TODO: magic: len, iter, etc.
-# TODO: List should be a subclass of Struct
 # TODO: List and GroupBy ordering
 
 import copy
@@ -81,6 +80,13 @@ class Aggregator(AggregatorBase):
     pass
 
 
+class Sum(AggregatorBase):
+    _initial = 0
+
+    def _aggregator(self, acc, item):
+        return acc + item
+
+
 class SumField(AggregatorBase):
     _initial = 0
 
@@ -92,7 +98,14 @@ class SumField(AggregatorBase):
         super(SumField, self).__init__(**kwargs)
 
 
-class List(AggregatorBase):
+class ExtractField(SumField):
+    _initial = None
+
+    def _aggregator(self, acc, item):
+        return item[self._field_name]
+
+
+class SimpleList(AggregatorBase):
     _initial = []
 
     def _aggregator(self, acc, item):
@@ -174,6 +187,23 @@ class GroupBy(Struct):
             return [r for r in self._internal_value.values()
                     if self._postfilter(r)]
         return list(self._internal_value.values())  # TODO: list?
+
+
+class List(GroupBy):
+    def _grouping(self, record):
+        ret = self.cnt
+        self.cnt += 1
+        return ret
+
+    def __init__(self, **kwargs):
+        self.cnt = 0
+        super(List, self).__init__(**kwargs)
+
+    def _add_const_fields(self, kwargs, key):
+        pass
+
+    def _get(self, idx):
+        return self._internal_value[idx]
 
 
 class GroupByFields(GroupBy):
