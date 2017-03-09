@@ -1,6 +1,5 @@
-# TODO: _perfilter setting should go to AggregatorBase
 # TODO: magic: len, iter, etc.
-# TODO: list should be a subclass of Struct
+# TODO: List should be a subclass of Struct
 
 import copy
 from collections import OrderedDict
@@ -11,24 +10,35 @@ class ComputationError(Exception):
 
 
 class AggregatorBase(object):
-    _internal_value = None
-    _prefilter = None
     _creation_counter = 0
 
-    @staticmethod
-    def _aggregator(acc, record):
-        pass  # pragma: no cover
+    def _set_if_missing(self, kwargs, attrname):
+        if not hasattr(self, attrname):
+            setattr(self, attrname, kwargs.pop(attrname, None))
 
-    def __init__(self):
+    def _get_initial(self):
+        return copy.copy(self._initial)
+
+    def __init__(self, **kwargs):
         self._creation_counter = AggregatorBase._creation_counter
         AggregatorBase._creation_counter += 1
+        self._set_if_missing(kwargs, '_initial')
+        self._set_if_missing(kwargs, '_aggregator')
+        self._set_if_missing(kwargs, '_prefilter')
+        if kwargs:
+            msg = ', '.join(['%s: %s' % (k, v) for k, v in kwargs.items()])
+            msg = 'Invalid fields in Aggregator: %s' % msg
+            raise TypeError(msg)
+        self._internal_value = self._get_initial()
 
-    def _aggregate(self, record):
-        self._internal_value = self._aggregator(self._internal_value, record)
+    def _aggregate(self, item):
+        if self._aggregator:
+            val = self._aggregator(self._internal_value, item)
+            self._internal_value = val
 
-    def _feed(self, record):
-        if not self._prefilter or self._prefilter(record):
-            self._aggregate(record)
+    def _feed(self, item):
+        if not self._prefilter or self._prefilter(item):
+            self._aggregate(item)
         return self
 
     def _feedmany(self, records):
@@ -43,15 +53,7 @@ class AggregatorBase(object):
         return self._value()
 
 
-class NoFeedMixin(object):
-    def _feed(self, record):
-        pass
-
-    def _feedmany(self, records):
-        pass
-
-
-class Computed(NoFeedMixin, AggregatorBase):
+class Computed(AggregatorBase):
     def __init__(self, fnc):
         self._fnc = fnc
         super(Computed, self).__init__()
@@ -61,68 +63,61 @@ class Computed(NoFeedMixin, AggregatorBase):
         return self
 
 
-class Constant(NoFeedMixin, AggregatorBase):
-    def __init__(self, value):
-        self._set_value(value)
+class Constant(AggregatorBase):
+    def __init__(self, value=None):
         super(Constant, self).__init__()
+        self._set_value(value)
 
     def _set_value(self, value):
         self._internal_value = value
 
 
 class GroupingField(Constant):
-    def __init__(self):
-        super(GroupingField, self).__init__(None)
+    pass
 
 
 class Aggregator(AggregatorBase):
-    def __init__(self, initial, aggregator, _prefilter=None):
-        self._internal_value = initial
-        self._aggregator = aggregator
-        self._prefilter = _prefilter
-        super(Aggregator, self).__init__()
+    pass
 
 
-class SumField(Aggregator):
-    def __init__(self, field_name, _prefilter=None):
-        def aggregator(acc, record):
-            return acc + record.get(field_name)
-        super(SumField, self).__init__(0, aggregator, _prefilter)
+class SumField(AggregatorBase):
+    _initial = 0
+
+    def _aggregator(self, acc, item):
+        return acc + item[self._field_name]
+
+    def __init__(self, field_name, **kwargs):
+        self._field_name = field_name
+        super(SumField, self).__init__(**kwargs)
 
 
 class List(AggregatorBase):
-    def __init__(self, _prefilter=None):
-        self._prefilter = _prefilter
-        self._internal_value = []
-        super(List, self).__init__()
+    _initial = []
 
-    @staticmethod
-    def _aggregator(v, record):
-        v.append(record)
-        return v
+    def _aggregator(self, acc, item):
+        acc.append(item)
+        return acc
 
 
 class Struct(AggregatorBase):
     def __init__(self, **kwargs):
-        self._prefilter = kwargs.pop('_prefilter', None)
         self._aggregator_fields = {}
         self._computed_fields = {}
-        for k, v in kwargs.items():
-            if isinstance(v, Computed):
-                self._computed_fields[k] = v
-            elif isinstance(v, AggregatorBase):
-                self._aggregator_fields[k] = v
-            else:
-                raise TypeError('Invalid field type: %s: %s' % (k, v))
-        self._internal_value = self._get_initial_value()
+        flds = []
+        for field_name in list(kwargs):
+            val = kwargs[field_name]
+            if isinstance(val, AggregatorBase):
+                flds.append((field_name, val))
+                kwargs.pop(field_name)
+                if isinstance(val, Computed):
+                    self._computed_fields[field_name] = val
+                else:
+                    self._aggregator_fields[field_name] = val
+        flds.sort(key=lambda f: f[1]._creation_counter)
+        self._sorted_fields = flds
+        super(Struct, self).__init__(**kwargs)
 
-        fl = [(k, v) for k, v in kwargs.items()]
-        # TODO: use sort, not sorted
-        fl = sorted(fl, key=lambda f: f[1]._creation_counter)
-        self._all_fields = [k for k, v in fl]
-        super(Struct, self).__init__()
-
-    def _get_initial_value(self):
+    def _get_initial(self):
         return copy.deepcopy(self._aggregator_fields)
 
     def _aggregate(self, record):
@@ -139,19 +134,17 @@ class Struct(AggregatorBase):
         raise AttributeError(msg % (type(self).__name__, field_name))
 
     def _value(self):
-        fl = [(field, getattr(self, field)) for field in self._all_fields]
-        return OrderedDict(fl)
+        flds = [(f, getattr(self, f)) for f, _ in self._sorted_fields]
+        return OrderedDict(flds)
 
 
-class GroupByBase(Struct):
-    _postfilter = None
-    _grouping = None
-
+class GroupBy(Struct):
     def __init__(self, **kwargs):
-        self._fields = kwargs
-        super(GroupByBase, self).__init__(**kwargs)
+        self._set_if_missing(kwargs, '_grouping')
+        self._set_if_missing(kwargs, '_postfilter')
+        super(GroupBy, self).__init__(**kwargs)
 
-    def _get_initial_value(self):
+    def _get_initial(self):
         return OrderedDict()  # preserve insertion order
 
     def _add_const_fields(self, kwargs, key):
@@ -165,9 +158,9 @@ class GroupByBase(Struct):
         try:
             bucket = self._internal_value[key]
         except KeyError:
-            kwargs = self._fields.copy()
-            self._add_const_fields(kwargs, key)
-            bucket = Struct(**kwargs)
+            kw = dict(self._sorted_fields)
+            self._add_const_fields(kw, key)
+            bucket = Struct(**kw)
             self._internal_value[key] = bucket
         bucket._feed(record)
 
@@ -182,19 +175,11 @@ class GroupByBase(Struct):
         return list(self._internal_value.values())  # TODO: list?
 
 
-class GroupBy(GroupByBase):
-    def __init__(self, **kwargs):
-        self._grouping = kwargs.pop('_grouping', None)
-        self._postfilter = kwargs.pop('_postfilter', None)  # TODO: to base
-        super(GroupBy, self).__init__(**kwargs)
-
-
-class GroupByFields(GroupByBase):
+class GroupByFields(GroupBy):
     def _grouping(self, record):
-        return tuple([record.get(k) for k in self._grouping_fields])
+        return tuple([record[k] for k in self._grouping_fields])
 
     def __init__(self, **kwargs):
-        self._postfilter = kwargs.pop('_postfilter', None)
         self._grouping_fields = [k for k, v in kwargs.items()
                                  if isinstance(v, GroupingField)]
         super(GroupByFields, self).__init__(**kwargs)
