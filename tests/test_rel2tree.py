@@ -2,15 +2,19 @@ import unittest
 import json
 import decimal
 
-from rel2tree import rel2tree
-from rel2tree import encoder
+from rel2tree import (
+    Aggregator, Sum, SimpleList, ExtractField, SumField,
+    GroupByFields, GroupingField, List,
+    Struct, Computed, Constant, GroupBy,
+    JSONEncoder, DecimalJSONEncoder,
+)
 
 
 class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_aggregator_simple(self):
-        a = rel2tree.Aggregator(
+        a = Aggregator(
             _initial=0,
             _aggregator=lambda acc, item: acc + item
         )
@@ -19,18 +23,18 @@ class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_aggregator_filter_even(self):
-        a = rel2tree.Sum(
+        a = Sum(
             _prefilter=lambda item: item % 2 == 0
         )
         a._feedmany([1, 2, 3])
         self.assertEqual(a._value(), 2)
-        s = json.dumps(a, cls=encoder.JSONEncoder)
+        s = json.dumps(a, cls=JSONEncoder)
         s = json.loads(s)
         self.assertEqual(s, 2)
 
     # @unittest.skip('test')
     def test_simple_list(self):
-        a = rel2tree.SimpleList(
+        a = SimpleList(
             _prefilter=lambda x: x < 4,
         )
         a._feed(1)._feed(2)._feed(3)._feed(4)
@@ -38,15 +42,13 @@ class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_struct(self):
-        a = rel2tree.Struct(
-            numbers=rel2tree.List(
-                num=rel2tree.ExtractField('num')
-            ),
-            sum=rel2tree.SumField('num'),
-            max=rel2tree.Computed(
+        a = Struct(
+            numbers=List(num=ExtractField('num')),
+            sum=SumField('num'),
+            max=Computed(
                 lambda r: max([x.num._value() for x in r.numbers])
             ),
-            something=rel2tree.Constant(2),
+            something=Constant(2),
         )
         a._feedmany([
             {'num': 1},
@@ -56,7 +58,7 @@ class SimpleTestCase(unittest.TestCase):
             {'num': 5}
         ])
         # print(json.dumps(a, cls=encoder.DecimalJSONEncoder, indent=2))
-        s = json.dumps(a, cls=encoder.JSONEncoder)
+        s = json.dumps(a, cls=JSONEncoder)
         s = json.loads(s)
         self.assertEqual(s, {
             'max': 5,
@@ -72,14 +74,14 @@ class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_groupby(self):
-        a = rel2tree.GroupBy(
+        a = GroupBy(
             _grouping=lambda obj: obj['client_id'],
-            sumorders=rel2tree.SumField('quantity'),
+            sumorders=SumField('quantity'),
         )
         a._feed({'client_id': 1, 'quantity': 10})
         a._feed({'client_id': 1, 'quantity': 20})
         a._feed({'client_id': 2, 'quantity': 100})
-        s = json.dumps(a, cls=encoder.JSONEncoder)
+        s = json.dumps(a, cls=JSONEncoder)
         s = json.loads(s)
         self.assertEqual(s, [
             {'groupKey': 1, 'sumorders': 30},
@@ -88,14 +90,14 @@ class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_groupbyfields(self):
-        a = rel2tree.GroupByFields(
-            client_id=rel2tree.GroupingField(),
-            sumorders=rel2tree.SumField('quantity'),
+        a = GroupByFields(
+            client_id=GroupingField(),
+            sumorders=SumField('quantity'),
         )
         a._feed({'client_id': 1, 'quantity': 10})
         a._feed({'client_id': 1, 'quantity': 20})
         a._feed({'client_id': 2, 'quantity': 100})
-        s = json.dumps(a, cls=encoder.JSONEncoder)
+        s = json.dumps(a, cls=JSONEncoder)
         s = json.loads(s)
         self.assertEqual(s, [
             {'client_id': 1, 'sumorders': 30},
@@ -114,30 +116,30 @@ class SimpleTestCase(unittest.TestCase):
         def balanceitem(o):
             return 'free' in o or 'credit' in o
 
-        a = rel2tree.Struct(
+        a = Struct(
             _prefilter=lambda x: x['clientID'] != 444,
-            balances=rel2tree.GroupByFields(
+            balances=GroupByFields(
                 _prefilter=balanceitem,
                 _postfilter=include_client,
-                clientID=rel2tree.GroupingField(),
-                free=rel2tree.GroupByFields(
+                clientID=GroupingField(),
+                free=GroupByFields(
                     _prefilter=lambda o: 'free' in o,
                     _postfilter=lambda x: x.amount,
-                    currencyID=rel2tree.GroupingField(),
-                    amount=rel2tree.SumField('free'),
+                    currencyID=GroupingField(),
+                    amount=SumField('free'),
                 ),
-                credit=rel2tree.GroupByFields(
+                credit=GroupByFields(
                     _prefilter=lambda o: 'credit' in o,
                     _postfilter=lambda x: x.amount,
-                    currencyID=rel2tree.GroupingField(),
-                    amount=rel2tree.SumField('credit'),
+                    currencyID=GroupingField(),
+                    amount=SumField('credit'),
                 ),
-                currencies=rel2tree.Computed(get_currencies),
+                currencies=Computed(get_currencies),
             ),
-            clientDetails=rel2tree.GroupByFields(
+            clientDetails=GroupByFields(
                 _prefilter=lambda o: 'clientCode' in o,
-                clientID=rel2tree.GroupingField(),
-                clientCode=rel2tree.GroupingField(),
+                clientID=GroupingField(),
+                clientCode=GroupingField(),
             )
         )
 
@@ -166,26 +168,26 @@ class SimpleTestCase(unittest.TestCase):
 
     # @unittest.skip('test')
     def test_field_ordering(self):
-        a = rel2tree.Struct(
-            a=rel2tree.Constant(1),
-            b=rel2tree.Constant(2),
-            c=rel2tree.Constant(3),
-            d=rel2tree.Struct(
-                d1=rel2tree.Constant('d1'),
-                d2=rel2tree.Constant('d2'),
+        a = Struct(
+            a=Constant(1),
+            b=Constant(2),
+            c=Constant(3),
+            d=Struct(
+                d1=Constant('d1'),
+                d2=Constant('d2'),
             ),
-            a_plus_b=rel2tree.Computed(lambda x: x.a._value() + x.b._value()),
-            g=rel2tree.GroupByFields(
-                x=rel2tree.GroupingField(),
-                y=rel2tree.GroupingField(),
-                sum=rel2tree.SumField('q')
+            a_plus_b=Computed(lambda x: x.a._value() + x.b._value()),
+            g=GroupByFields(
+                x=GroupingField(),
+                y=GroupingField(),
+                sum=SumField('q')
             )
         )
 
         a._feed({'x': 1, 'y': 1, 'q': 10})
         a._feed({'x': 1, 'y': 2, 'q': 10})
         a._feed({'x': 1, 'y': 1, 'q': 3})
-        s = json.dumps(a, cls=encoder.JSONEncoder)
+        s = json.dumps(a, cls=JSONEncoder)
         self.assertEqual(
             s,
             ('{"a": 1, "b": 2, "c": 3, "d": {"d1": "d1", "d2": "d2"},'
@@ -205,26 +207,26 @@ class LongTest(unittest.TestCase):
             return list(set([f.currencyID._value() for f in client.free] +
                             [c.currencyID._value() for c in client.credit]))
 
-        a = rel2tree.Struct(
-            type=rel2tree.Constant('BALANCE'),
-            balance=rel2tree.Struct(
+        a = Struct(
+            type=Constant('BALANCE'),
+            balance=Struct(
                 _prefilter=lambda d: d['clientID'] != 444,
-                clients=rel2tree.GroupByFields(
+                clients=GroupByFields(
                     _postfilter=include_client,
-                    clientID=rel2tree.GroupingField(),
-                    free=rel2tree.GroupByFields(
+                    clientID=GroupingField(),
+                    free=GroupByFields(
                         _prefilter=lambda obj: 'free' in obj,
                         _postfilter=lambda x: x.amount,
-                        currencyID=rel2tree.GroupingField(),
-                        amount=rel2tree.SumField('free'),
+                        currencyID=GroupingField(),
+                        amount=SumField('free'),
                     ),
-                    credit=rel2tree.GroupByFields(
+                    credit=GroupByFields(
                         _prefilter=lambda obj: 'credit' in obj,
                         _postfilter=lambda x: x.amount,
-                        currencyID=rel2tree.GroupingField(),
-                        amount=rel2tree.SumField('credit'),
+                        currencyID=GroupingField(),
+                        amount=SumField('credit'),
                     ),
-                    currencies=rel2tree.Computed(get_currencies),
+                    currencies=Computed(get_currencies),
                 ),
             ),
         )
@@ -245,4 +247,4 @@ class LongTest(unittest.TestCase):
                 'credit': credit,
             })
             i += 1
-        print(json.dumps(a, cls=encoder.DecimalJSONEncoder, indent=2))
+        print(json.dumps(a, cls=DecimalJSONEncoder, indent=2))
