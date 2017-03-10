@@ -2,13 +2,16 @@
 # -*- coding: utf-8 -*-
 
 from setuptools import setup
+import pkg_resources
+
 
 with open('PYPI_README.rst') as readme_file:
     readme = readme_file.read()
 
+
 setup(
     name='rel2tree',
-    version='0.1',
+    version=pkg_resources.require("rel2tree")[0].version,
     description="Convert relational data to tree-like structure (JSON)",
     long_description=readme,
     author="Richard Bann",
