@@ -1,4 +1,3 @@
-# TODO: magic: len, iter, etc.
 # TODO: List and GroupBy ordering
 
 import copy
@@ -51,6 +50,10 @@ class AggregatorBase(object):
 
     def _json(self):
         return self._value()
+
+    def __bool__(self):
+        return bool(self._value())
+    __nonzero__ = __bool__
 
 
 class Computed(AggregatorBase):
@@ -112,6 +115,12 @@ class SimpleList(AggregatorBase):
         acc.append(item)
         return acc
 
+    def __len__(self):
+        return len(self._value())
+
+    def __iter__(self):
+        return self._value().__iter__()
+
 
 class Struct(AggregatorBase):
     def __init__(self, **kwargs):
@@ -150,6 +159,12 @@ class Struct(AggregatorBase):
     def _value(self):
         flds = [(f, getattr(self, f)) for f, _ in self._sorted_fields]
         return OrderedDict(flds)
+
+    def __len__(self):
+        return len(self._value())
+
+    def __iter__(self):
+        return self._value().__iter__()
 
 
 class GroupBy(Struct):

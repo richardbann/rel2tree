@@ -44,8 +44,7 @@ class SimpleTestCase(unittest.TestCase):
             ),
             sum=rel2tree.SumField('num'),
             max=rel2tree.Computed(
-                # TODO: iterate over values
-                lambda r: max([x.num._value() for x in r.numbers._value()])
+                lambda r: max([x.num._value() for x in r.numbers])
             ),
             something=rel2tree.Constant(2),
         )
@@ -106,15 +105,11 @@ class SimpleTestCase(unittest.TestCase):
     # @unittest.skip('test')
     def test_complex(self):
         def include_client(client):
-            # TODO: len magic
-            return len(client.free._value()) + len(client.credit._value())
+            return len(client.free) + len(client.credit)
 
         def get_currencies(client):
-            # TODO: iter magic
-            free = client.free._value()
-            credit = client.credit._value()
-            return list(set([f.currencyID._value() for f in free] +
-                            [c.currencyID._value() for c in credit]))
+            return list(set([f.currencyID._value() for f in client.free] +
+                            [c.currencyID._value() for c in client.credit]))
 
         def balanceitem(o):
             return 'free' in o or 'credit' in o
@@ -127,15 +122,13 @@ class SimpleTestCase(unittest.TestCase):
                 clientID=rel2tree.GroupingField(),
                 free=rel2tree.GroupByFields(
                     _prefilter=lambda o: 'free' in o,
-                    # TODO: bool magic maybe
-                    _postfilter=lambda x: x.amount._value(),
+                    _postfilter=lambda x: x.amount,
                     currencyID=rel2tree.GroupingField(),
                     amount=rel2tree.SumField('free'),
                 ),
                 credit=rel2tree.GroupByFields(
                     _prefilter=lambda o: 'credit' in o,
-                    # TODO: bool magic maybe
-                    _postfilter=lambda x: x.amount._value(),
+                    _postfilter=lambda x: x.amount,
                     currencyID=rel2tree.GroupingField(),
                     amount=rel2tree.SumField('credit'),
                 ),
@@ -206,15 +199,11 @@ class SimpleTestCase(unittest.TestCase):
 class LongTest(unittest.TestCase):
     def test_many(self):
         def include_client(client):
-            # TODO: len magic
-            return len(client.free._value()) + len(client.credit._value())
+            return len(client.free) + len(client.credit)
 
         def get_currencies(client):
-            # TODO: iter magic
-            free = client.free._value()
-            credit = client.credit._value()
-            return list(set([f.currencyID._value() for f in free] +
-                            [c.currencyID._value() for c in credit]))
+            return list(set([f.currencyID._value() for f in client.free] +
+                            [c.currencyID._value() for c in client.credit]))
 
         a = rel2tree.Struct(
             type=rel2tree.Constant('BALANCE'),
@@ -225,15 +214,13 @@ class LongTest(unittest.TestCase):
                     clientID=rel2tree.GroupingField(),
                     free=rel2tree.GroupByFields(
                         _prefilter=lambda obj: 'free' in obj,
-                        # TODO: bool magic
-                        _postfilter=lambda x: x.amount._value(),
+                        _postfilter=lambda x: x.amount,
                         currencyID=rel2tree.GroupingField(),
                         amount=rel2tree.SumField('free'),
                     ),
                     credit=rel2tree.GroupByFields(
                         _prefilter=lambda obj: 'credit' in obj,
-                        # TODO: bool magic
-                        _postfilter=lambda x: x.amount._value(),
+                        _postfilter=lambda x: x.amount,
                         currencyID=rel2tree.GroupingField(),
                         amount=rel2tree.SumField('credit'),
                     ),
