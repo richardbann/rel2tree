@@ -8,7 +8,7 @@ with open('README') as readme_file:
 
 setup(
     name='rel2tree',
-    version='1.1.0',
+    version='1.1.1',
     description="Convert relational data to tree-like structure (JSON)",
     long_description=readme,
     author="Richard Bann",

@@ -43,6 +43,12 @@ class SimpleTestCase(unittest.TestCase):
         self.assertEqual(a._value(), [3, 2, 1])
 
     # @unittest.skip('test')
+    def test_sumfield(self):
+        a = SumField('n', _initial=decimal.Decimal(0))
+        a._feed({'n': 1})._feed({'n': 2})._feed({'n': 3})
+        self.assertEqual(a._value(), 6)
+
+    # @unittest.skip('test')
     def test_struct(self):
         a = Struct(
             numbers=List(

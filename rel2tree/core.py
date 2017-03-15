@@ -9,9 +9,11 @@ class ComputationError(Exception):
 class AggregatorBase(object):
     _creation_counter = 0
 
-    def _set_if_missing(self, kwargs, attrname):
-        if not hasattr(self, attrname):
-            setattr(self, attrname, kwargs.pop(attrname, None))
+    def _ensure_attr(self, kwargs, attrname):
+        if attrname in kwargs:
+            setattr(self, attrname, kwargs.pop(attrname))
+        elif not hasattr(self, attrname):
+            setattr(self, attrname, None)
 
     def _get_initial(self):
         return copy.copy(self._initial)
@@ -19,9 +21,9 @@ class AggregatorBase(object):
     def __init__(self, **kwargs):
         self._creation_counter = AggregatorBase._creation_counter
         AggregatorBase._creation_counter += 1
-        self._set_if_missing(kwargs, '_initial')
-        self._set_if_missing(kwargs, '_aggregator')
-        self._set_if_missing(kwargs, '_prefilter')
+        self._ensure_attr(kwargs, '_initial')
+        self._ensure_attr(kwargs, '_aggregator')
+        self._ensure_attr(kwargs, '_prefilter')
         if kwargs:
             msg = ', '.join(['%s: %s' % (k, v) for k, v in kwargs.items()])
             msg = 'Invalid fields in Aggregator: %s' % msg
@@ -56,7 +58,7 @@ class AggregatorBase(object):
 
 class Sortable(AggregatorBase):
     def __init__(self, **kwargs):
-        self._set_if_missing(kwargs, '_sortkey')
+        self._ensure_attr(kwargs, '_sortkey')
         super(Sortable, self).__init__(**kwargs)
 
     def _value(self):
@@ -132,8 +134,8 @@ class Struct(AggregatorBase):
 
 class GroupByBase(Struct):
     def __init__(self, **kwargs):
-        self._set_if_missing(kwargs, '_grouping')
-        self._set_if_missing(kwargs, '_postfilter')
+        self._ensure_attr(kwargs, '_grouping')
+        self._ensure_attr(kwargs, '_postfilter')
         super(GroupByBase, self).__init__(**kwargs)
 
     def _get_initial(self):
