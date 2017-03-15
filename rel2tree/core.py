@@ -1,5 +1,3 @@
-# TODO: List and GroupBy ordering
-
 import copy
 from collections import OrderedDict
 
@@ -56,10 +54,22 @@ class AggregatorBase(object):
     __nonzero__ = __bool__
 
 
-class Computed(AggregatorBase):
-    def __init__(self, fnc):
+class Sortable(AggregatorBase):
+    def __init__(self, **kwargs):
+        self._set_if_missing(kwargs, '_sortkey')
+        super(Sortable, self).__init__(**kwargs)
+
+    def _value(self):
+        ret = super(Sortable, self)._value()
+        if self._sortkey:
+            ret.sort(key=self._sortkey)
+        return ret
+
+
+class Computed(Sortable, AggregatorBase):
+    def __init__(self, fnc, **kwargs):
         self._fnc = fnc
-        super(Computed, self).__init__()
+        super(Computed, self).__init__(**kwargs)
 
     def _compute(self, parent):
         self._internal_value = self._fnc(parent)
@@ -120,11 +130,11 @@ class Struct(AggregatorBase):
         return self._value().__iter__()
 
 
-class GroupBy(Struct):
+class GroupByBase(Struct):
     def __init__(self, **kwargs):
         self._set_if_missing(kwargs, '_grouping')
         self._set_if_missing(kwargs, '_postfilter')
-        super(GroupBy, self).__init__(**kwargs)
+        super(GroupByBase, self).__init__(**kwargs)
 
     def _get_initial(self):
         return OrderedDict()  # preserve insertion order
@@ -154,4 +164,8 @@ class GroupBy(Struct):
         if self._postfilter:
             return [r for r in self._internal_value.values()
                     if self._postfilter(r)]
-        return list(self._internal_value.values())  # TODO: list?
+        return list(self._internal_value.values())
+
+
+class GroupBy(Sortable, GroupByBase):
+    pass

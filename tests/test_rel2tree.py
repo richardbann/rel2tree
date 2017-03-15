@@ -36,14 +36,19 @@ class SimpleTestCase(unittest.TestCase):
     def test_simple_list(self):
         a = SimpleList(
             _prefilter=lambda x: x < 4,
+            _sortkey=lambda o: -o,
         )
         a._feed(1)._feed(2)._feed(3)._feed(4)
-        self.assertEqual(a._value(), [1, 2, 3])
+        # print(json.dumps(a, cls=DecimalJSONEncoder, indent=2))
+        self.assertEqual(a._value(), [3, 2, 1])
 
     # @unittest.skip('test')
     def test_struct(self):
         a = Struct(
-            numbers=List(num=ExtractField('num')),
+            numbers=List(
+                _sortkey=lambda o: -o.num._value(),
+                num=ExtractField('num')
+            ),
             sum=SumField('num'),
             max=Computed(
                 lambda r: max([x.num._value() for x in r.numbers])
@@ -57,18 +62,18 @@ class SimpleTestCase(unittest.TestCase):
             {'num': 4},
             {'num': 5}
         ])
-        # print(json.dumps(a, cls=encoder.DecimalJSONEncoder, indent=2))
+        # print(json.dumps(a, cls=DecimalJSONEncoder, indent=2))
         s = json.dumps(a, cls=JSONEncoder)
         s = json.loads(s)
         self.assertEqual(s, {
             'max': 5,
             'sum': 15,
             'numbers': [
-                {'num': 1},
-                {'num': 2},
-                {'num': 3},
+                {'num': 5},
                 {'num': 4},
-                {'num': 5}],
+                {'num': 3},
+                {'num': 2},
+                {'num': 1}],
             'something': 2
         })
 
@@ -138,6 +143,7 @@ class SimpleTestCase(unittest.TestCase):
             ),
             clientDetails=GroupByFields(
                 _prefilter=lambda o: 'clientCode' in o,
+                _sortkey=lambda o: o.clientCode._value(),
                 clientID=GroupingField(),
                 clientCode=GroupingField(),
             )
@@ -157,7 +163,7 @@ class SimpleTestCase(unittest.TestCase):
 
         a._feed({'clientID': 222, 'clientCode': '00222'})
         a._feed({'clientID': 111, 'clientCode': '00111'})
-        # print(json.dumps(a, cls=encoder.JSONEncoder, indent=2))
+        # print(json.dumps(a, cls=JSONEncoder, indent=2))
 
         self.assertEqual(len(a._value()), 2)
         b = a.balances
@@ -213,20 +219,23 @@ class LongTest(unittest.TestCase):
                 _prefilter=lambda d: d['clientID'] != 444,
                 clients=GroupByFields(
                     _postfilter=include_client,
+                    _sortkey=lambda o: o.clientID._value(),
                     clientID=GroupingField(),
                     free=GroupByFields(
                         _prefilter=lambda obj: 'free' in obj,
                         _postfilter=lambda x: x.amount,
+                        _sortkey=lambda o: o.currencyID._value(),
                         currencyID=GroupingField(),
                         amount=SumField('free'),
                     ),
                     credit=GroupByFields(
                         _prefilter=lambda obj: 'credit' in obj,
                         _postfilter=lambda x: x.amount,
+                        _sortkey=lambda o: o.currencyID._value(),
                         currencyID=GroupingField(),
                         amount=SumField('credit'),
                     ),
-                    currencies=Computed(get_currencies),
+                    currencies=Computed(get_currencies, _sortkey=lambda o: o),
                 ),
             ),
         )
@@ -238,8 +247,11 @@ class LongTest(unittest.TestCase):
         while i < 50000:
             clientID = random.choice(clients)
             currencyID = random.choice(currencies)
-            free = decimal.Decimal(random.randint(100, 1000))
-            credit = decimal.Decimal(random.randint(100, 1000))
+            # free = decimal.Decimal(random.randint(100, 1000))
+            # credit = decimal.Decimal(random.randint(100, 1000))
+            free = random.randint(100, 1000)
+            credit = random.randint(100, 1000)
+
             a._feed({
                 'clientID': clientID,
                 'currencyID': currencyID,

@@ -1,4 +1,4 @@
-from .core import AggregatorBase, GroupBy, Constant
+from .core import AggregatorBase, GroupBy, Constant, Sortable
 
 
 class Aggregator(AggregatorBase):
@@ -34,7 +34,7 @@ class ExtractField(SumField):
         return item[self._field_name]
 
 
-class SimpleList(AggregatorBase):
+class SimpleList(Sortable):
     _initial = []
 
     def _aggregator(self, acc, item):
