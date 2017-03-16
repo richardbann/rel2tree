@@ -1,79 +1,42 @@
-from .core import AggregatorBase, GroupBy, Constant, Sortable
-
-
-class Aggregator(AggregatorBase):
-    pass
-
-
-class GroupingField(Constant):
-    pass
+from .core import AggregatorBase, SortingMixin, HavingMixin, GroupBy
 
 
 class Sum(AggregatorBase):
-    _initial = 0
-
-    def _aggregator(self, acc, item):
-        return acc + item
+    def _aggregator(self, records, inner):
+        return sum(records)
 
 
-class SumField(AggregatorBase):
-    _initial = 0
-
-    def _aggregator(self, acc, item):
-        return acc + item[self._field_name]
-
+class FieldAggregator(AggregatorBase):
     def __init__(self, field_name, **kwargs):
-        self._field_name = field_name
-        super(SumField, self).__init__(**kwargs)
+        self.field_name = field_name
+        super(FieldAggregator, self).__init__(**kwargs)
 
 
-class ExtractField(SumField):
-    _initial = None
-
-    def _aggregator(self, acc, item):
-        return item[self._field_name]
-
-
-class SimpleList(Sortable):
-    _initial = []
-
-    def _aggregator(self, acc, item):
-        acc.append(item)
-        return acc
-
-    def __len__(self):
-        return len(self._value())
-
-    def __iter__(self):
-        return self._value().__iter__()
+class GroupingField(FieldAggregator):
+    def _aggregator(self, records, inner):
+        if records:
+            return records[0].get(self.field_name)
+        return None
 
 
-class List(GroupBy):
-    def _grouping(self, record):
-        ret = self.cnt
-        self.cnt += 1
-        return ret
+class SumField(FieldAggregator):
+    def _aggregator(self, records, inner):
+        return sum([r.get(self.field_name) for r in records])
 
-    def __init__(self, **kwargs):
-        self.cnt = 0
-        super(List, self).__init__(**kwargs)
 
-    def _add_const_fields(self, kwargs, key):
-        pass
+class FirstField(GroupingField):
+    pass
 
-    def _get(self, idx):
-        return self._internal_value[idx]
+
+class List(SortingMixin, HavingMixin, AggregatorBase):
+    pass
 
 
 class GroupByFields(GroupBy):
-    def _grouping(self, record):
-        return tuple([record[k] for k in self._grouping_fields])
-
     def __init__(self, **kwargs):
-        self._grouping_fields = [k for k, v in kwargs.items()
-                                 if isinstance(v, GroupingField)]
         super(GroupByFields, self).__init__(**kwargs)
+        gf = [a for a, b in self._fields if isinstance(b, GroupingField)]
+        self._grouping_fields = gf
 
-    def _add_const_fields(self, kwargs, key):
-        for i, field in enumerate(self._grouping_fields):
-            kwargs[field]._set_value(key[i])
+    def _grouping(self, record):
+        return tuple([record.get(x) for x in self._grouping_fields])
