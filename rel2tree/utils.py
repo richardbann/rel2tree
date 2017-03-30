@@ -35,7 +35,8 @@ class List(SortingMixin, HavingMixin, AggregatorBase):
 class GroupByFields(GroupBy):
     def __init__(self, **kwargs):
         super(GroupByFields, self).__init__(**kwargs)
-        gf = [a for a, b in self._fields if isinstance(b, GroupingField)]
+        gf = [b.field_name for a, b in self._fields
+              if isinstance(b, GroupingField)]
         self._grouping_fields = gf
 
     def _grouping(self, record):

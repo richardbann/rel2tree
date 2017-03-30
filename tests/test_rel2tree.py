@@ -103,6 +103,24 @@ class SimpleTestCase(unittest.TestCase):
             OrderedDict([('client_id', 2), ('sumorders', 100)]),
         ])
 
+    def test_different_name(self):
+        a = GroupByFields(
+            _sortkey=lambda r: r['clientId'],
+            clientId=GroupingField('client_id'),
+            sumOrders=SumField('quantity'),
+        )
+
+        data = [
+            {'client_id': 2, 'quantity': 100},
+            {'client_id': 1, 'quantity': 10},
+            {'client_id': 1, 'quantity': 20},
+        ]
+
+        self.assertEqual(a._create(data), [
+            OrderedDict([('clientId', 1), ('sumOrders', 30)]),
+            OrderedDict([('clientId', 2), ('sumOrders', 100)]),
+        ])
+
     # @unittest.skip('test')
     def test_complex(self):
         def include_client(client):
@@ -197,7 +215,7 @@ class SimpleTestCase(unittest.TestCase):
         ]))
 
 
-# @unittest.skip('only for performance measuring')
+@unittest.skip('only for performance measuring')
 class LongTest(unittest.TestCase):
     def test_many(self):
         def include_client(client):
