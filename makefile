@@ -48,3 +48,8 @@ deploy:
 		-v "$(CURDIR):/project" \
 		-w "/project" \
 		$(img) twine upload dist/*
+################################################################################
+.PHONY: pycclean
+## delete .pyc files
+pycclean:
+	@find . -name "*.py[c|o]" -delete -o -name __pycache__ -delete

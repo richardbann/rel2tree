@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 
 from setuptools import setup
+from rel2tree import __version__
 
 with open('README') as readme_file:
     readme = readme_file.read()
 
+
 setup(
     name='rel2tree',
-    version='2.0.1',
+    version=__version__,
     description="Convert relational data to tree-like structure (JSON)",
     long_description=readme,
     author="Richard Bann",

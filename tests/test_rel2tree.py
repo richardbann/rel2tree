@@ -1,41 +1,91 @@
 import unittest
-from collections import OrderedDict
+import random
+import decimal
 
-from rel2tree.utils import Sum, SumField, List, GroupByFields, GroupingField
-from rel2tree.core import Struct, Constant, Computed, GroupBy
+# from rel2tree.utils import Sum, SumField, List, GroupByFields, GroupingField
+from rel2tree.core import Field, Dict, Computed
+from rel2tree.fields import Const, SumField, PickField, GroupByFields
+
+
+def id(x):
+    return x
+
+
+def even(x):
+    return x % 2 == 0
 
 
 class SimpleTestCase(unittest.TestCase):
+    # @unittest.skip('test')
+    def test_field(self):
+        f = Field(_aggregator=sum)
+        f.feed([1, 2, 3])
+        self.assertEqual(f.get(), 6)
 
     # @unittest.skip('test')
-    def test_aggregator_simple(self):
-        a = Sum()
-        r = a._create([1, 2, 3])
-        self.assertEqual(r, 6)
+    def test_where(self):
+        f = Field(_aggregator=sum, _where=even)
+        f.feed([1, 2, 3])
+        self.assertEqual(f.get(), 2)
 
     # @unittest.skip('test')
-    def test_aggregator_where(self):
-        a = Sum(_where=lambda r: r % 2 == 0)
-        r = a._create([1, 2, 3])
-        self.assertEqual(r, 2)
+    def test_sort(self):
+        f = Field(_aggregator=id, _sortkey=id)
+        f.feed([2, 1, 3])
+        self.assertEqual(f.get(), [1, 2, 3])
 
     # @unittest.skip('test')
-    def test_sumfield(self):
-        a = SumField('n')
-        r = a._create([{'n': 1}, {'n': 2}, {'n': 3}])
-        self.assertEqual(r, 6)
+    def test_empty(self):
+        f = Field(_aggregator=sum)
+        self.assertEqual(f.get(), 0)
 
     # @unittest.skip('test')
-    def test_simple_struct(self):
-        a = Struct(
+    def test_dict(self):
+        f = Dict(
+            c=Const('const'),
+            s=Field(_aggregator=sum)
+        )
+        self.assertEqual(f.get(), {'c': 'const', 's': 0})
+
+    # @unittest.skip('test')
+    def test_computed(self):
+        f = Dict(
+            c=Const('const'),
+            s=Field(_aggregator=sum),
+            comp=Computed(lambda r: r['s'] * 2)
+        )
+        f.feed([1, 2, 3, 4])
+        self.assertEqual(f.get(), {'c': 'const', 's': 10, 'comp': 20})
+
+    # @unittest.skip('test')
+    def test_groupby(self):
+        f = GroupByFields('typ', field=Dict(
+                typ=PickField('typ'),
+                sum=SumField('n'),
+            ))
+        f.feed([
+            {'typ': 'A', 'n': 1},
+            {'typ': 'A', 'n': 2},
+            {'typ': 'A', 'n': 3},
+            {'typ': 'A', 'n': 4},
+            {'typ': 'B', 'n': 5},
+            {'typ': 'B', 'n': 6},
+        ])
+        self.assertEqual(f.get(), [
+            {'typ': 'A', 'sum': 10}, {'typ': 'B', 'sum': 11}
+        ])
+
+    # @unittest.skip('test')
+    def test_simple_dict(self):
+        a = Dict(
             sum=SumField('num'),
-            something=Constant(2),
+            something=Const(2),
             maxinlist=Computed(
                 lambda r: max([l['num'] for l in r['list']])
             ),
-            list=List(
+            list=Field(
                 _sortkey=lambda r: -r['num'],
-                _having=lambda r: r['num'] < 4
+                _where=lambda r: r['num'] < 4
             ),
         )
 
@@ -47,79 +97,12 @@ class SimpleTestCase(unittest.TestCase):
             {'num': 5}
         ]
 
-        self.assertEqual(a._create(data), OrderedDict([
+        self.assertEqual(a.feed(data).get(), dict([
             ('sum', 15),
             ('something', 2),
             ('maxinlist', 3),
             ('list', [{'num': 3}, {'num': 2}, {'num': 1}]),
         ]))
-
-    # @unittest.skip('test')
-    def test_groupby(self):
-        a = Struct(
-            type=Constant('TEST'),
-            clients=GroupBy(
-                _sortkey=lambda r: r['clientID'],
-                _grouping=lambda obj: obj['client_id'],
-                clientID=GroupingField('client_id'),
-                sumorders=SumField('quantity'),
-            ),
-            sum=SumField('quantity'),
-            sumbigs=SumField(
-                'quantity',
-                _where=lambda o: o['quantity'] >= 50)
-        )
-
-        data = [
-            {'client_id': 2, 'quantity': 100},
-            {'client_id': 1, 'quantity': 10},
-            {'client_id': 1, 'quantity': 20},
-        ]
-
-        self.assertEqual(a._create(data), OrderedDict([
-            ('type', 'TEST'),
-            ('clients', [{'clientID': 1, 'sumorders': 30},
-                         {'clientID': 2, 'sumorders': 100}]),
-            ('sum', 130),
-            ('sumbigs', 100),
-        ]))
-
-    # @unittest.skip('test')
-    def test_groupbyfields(self):
-        a = GroupByFields(
-            _sortkey=lambda r: r['client_id'],
-            client_id=GroupingField('client_id'),
-            sumorders=SumField('quantity'),
-        )
-
-        data = [
-            {'client_id': 2, 'quantity': 100},
-            {'client_id': 1, 'quantity': 10},
-            {'client_id': 1, 'quantity': 20},
-        ]
-
-        self.assertEqual(a._create(data), [
-            OrderedDict([('client_id', 1), ('sumorders', 30)]),
-            OrderedDict([('client_id', 2), ('sumorders', 100)]),
-        ])
-
-    def test_different_name(self):
-        a = GroupByFields(
-            _sortkey=lambda r: r['clientId'],
-            clientId=GroupingField('client_id'),
-            sumOrders=SumField('quantity'),
-        )
-
-        data = [
-            {'client_id': 2, 'quantity': 100},
-            {'client_id': 1, 'quantity': 10},
-            {'client_id': 1, 'quantity': 20},
-        ]
-
-        self.assertEqual(a._create(data), [
-            OrderedDict([('clientId', 1), ('sumOrders', 30)]),
-            OrderedDict([('clientId', 2), ('sumOrders', 100)]),
-        ])
 
     # @unittest.skip('test')
     def test_complex(self):
@@ -135,87 +118,95 @@ class SimpleTestCase(unittest.TestCase):
         def balanceitem(o):
             return 'free' in o or 'credit' in o
 
-        a = Struct(
+        a = Dict(
             _where=lambda x: x['clientID'] != 444,
             balances=GroupByFields(
+                'clientID',
                 _where=balanceitem,
                 _having=include_client,
-                _sortkey=lambda o: o['clientID'],
-                clientID=GroupingField('clientID'),
-                free=GroupByFields(
-                    _where=lambda o: 'free' in o,
-                    _having=lambda o: o['amount'],
-                    _sortkey=lambda o: o['currencyID'],
-                    currencyID=GroupingField('currencyID'),
-                    amount=SumField('free'),
-                ),
-                credit=GroupByFields(
-                    _where=lambda o: 'credit' in o,
-                    _having=lambda o: o['amount'],
-                    _sortkey=lambda o: o['currencyID'],
-                    currencyID=GroupingField('currencyID'),
-                    amount=SumField('credit'),
-                ),
-                currencies=Computed(get_currencies),
+                _post_sortkey=lambda o: o['clientID'],
+                field=Dict(
+                    clientID=PickField('clientID'),
+                    free=GroupByFields(
+                        'currencyID',
+                        _where=lambda o: 'free' in o,
+                        _having=lambda o: o['amount'],
+                        _post_sortkey=lambda o: o['currencyID'],
+                        field=Dict(
+                            currencyID=PickField('currencyID'),
+                            amount=SumField('free')
+                        )
+                    ),
+                    credit=GroupByFields(
+                        'currencyID',
+                        _where=lambda o: 'credit' in o,
+                        _having=lambda o: o['amount'],
+                        _post_sortkey=lambda o: o['currencyID'],
+                        field=Dict(
+                            currencyID=PickField('currencyID'),
+                            amount=SumField('credit')
+                        )
+                    ),
+                    currencies=Computed(get_currencies)
+                )
             ),
             clientDetails=GroupByFields(
+                'clientID',
                 _where=lambda o: 'clientCode' in o,
                 _sortkey=lambda o: o['clientCode'],
-                clientID=GroupingField('clientID'),
-                clientCode=GroupingField('clientCode'),
+                field=Dict(
+                    clientID=PickField('clientID'),
+                    clientCode=PickField('clientCode'),
+                )
             )
         )
 
         data = [
+            {'clientID': 222, 'currencyID': 'EUR', 'free': 123},
             {'clientID': 111, 'currencyID': 'EUR', 'free': 123},
             {'clientID': 111, 'currencyID': 'EUR', 'credit': 50},
             {'clientID': 111, 'currencyID': 'PLN', 'free': 20},
             {'clientID': 111, 'currencyID': 'EUR', 'free': 2},
             {'clientID': 111, 'currencyID': 'PLN', 'free': -18},
-            {'clientID': 222, 'currencyID': 'EUR', 'free': 123},
             {'clientID': 111, 'currencyID': 'PLN', 'free': -2},
             {'clientID': 222, 'currencyID': 'EUR', 'free': -123},
-            {'clientID': 333, 'currencyID': 'EUR', 'free': 123},
             {'clientID': 333, 'currencyID': 'GBP', 'free': 200},
+            {'clientID': 333, 'currencyID': 'EUR', 'free': 123},
             {'clientID': 444, 'currencyID': 'EUR', 'free': 2000},
             {'clientID': 333, 'clientCode': '00333'},
             {'clientID': 111, 'clientCode': '00111'},
         ]
 
-        # import json
-        # from rel2tree.encoders import DecimalJSONEncoder
-        # print(json.dumps(a._create(data), cls=DecimalJSONEncoder, indent=2))
-
-        self.assertEqual(a._create(data), OrderedDict([
+        self.assertEqual(a.feed(data).get(), dict([
             ('balances', [
-                OrderedDict([
+                dict([
                     ('clientID', 111),
                     ('free', [
-                        OrderedDict([('currencyID', 'EUR'), ('amount', 125)]),
+                        dict([('currencyID', 'EUR'), ('amount', 125)]),
                     ]),
                     ('credit', [
-                        OrderedDict([('currencyID', 'EUR'), ('amount', 50)]),
+                        dict([('currencyID', 'EUR'), ('amount', 50)]),
                     ]),
                     ('currencies', ['EUR']),
                 ]),
-                OrderedDict([
+                dict([
                     ('clientID', 333),
                     ('free', [
-                        OrderedDict([('currencyID', 'EUR'), ('amount', 123)]),
-                        OrderedDict([('currencyID', 'GBP'), ('amount', 200)]),
+                        dict([('currencyID', 'EUR'), ('amount', 123)]),
+                        dict([('currencyID', 'GBP'), ('amount', 200)]),
                     ]),
                     ('credit', []),
                     ('currencies', ['EUR', 'GBP']),
                 ]),
             ]),
             ('clientDetails', [
-                OrderedDict([('clientID', 111), ('clientCode', '00111')]),
-                OrderedDict([('clientID', 333), ('clientCode', '00333')]),
+                dict([('clientID', 111), ('clientCode', '00111')]),
+                dict([('clientID', 333), ('clientCode', '00333')]),
             ]),
         ]))
 
 
-@unittest.skip('only for performance measuring')
+# @unittest.skip('only for performance measuring')
 class LongTest(unittest.TestCase):
     def test_many(self):
         def include_client(client):
@@ -230,32 +221,40 @@ class LongTest(unittest.TestCase):
         def balanceitem(o):
             return 'free' in o or 'credit' in o
 
-        a = Struct(
+        a = Dict(
             _where=lambda x: x['clientID'] != 444,
             balances=GroupByFields(
+                'clientID',
                 _where=balanceitem,
                 _having=include_client,
-                _sortkey=lambda o: o['clientID'],
-                clientID=GroupingField('clientID'),
-                free=GroupByFields(
-                    _where=lambda o: 'free' in o,
-                    _having=lambda o: o['amount'],
-                    _sortkey=lambda o: o['currencyID'],
-                    currencyID=GroupingField('currencyID'),
-                    amount=SumField('free'),
-                ),
-                credit=GroupByFields(
-                    _where=lambda o: 'credit' in o,
-                    _having=lambda o: o['amount'],
-                    _sortkey=lambda o: o['currencyID'],
-                    currencyID=GroupingField('currencyID'),
-                    amount=SumField('credit'),
-                ),
-                currencies=Computed(get_currencies),
-            ),
+                _post_sortkey=lambda o: o['clientID'],
+                field=Dict(
+                    clientID=PickField('clientID'),
+                    free=GroupByFields(
+                        'currencyID',
+                        _where=lambda o: 'free' in o,
+                        _having=lambda o: o['amount'],
+                        _post_sortkey=lambda o: o['currencyID'],
+                        field=Dict(
+                            currencyID=PickField('currencyID'),
+                            amount=SumField('free')
+                        )
+                    ),
+                    credit=GroupByFields(
+                        'currencyID',
+                        _where=lambda o: 'credit' in o,
+                        _having=lambda o: o['amount'],
+                        _post_sortkey=lambda o: o['currencyID'],
+                        field=Dict(
+                            currencyID=PickField('currencyID'),
+                            amount=SumField('credit')
+                        )
+                    ),
+                    currencies=Computed(get_currencies)
+                )
+            )
         )
 
-        import random
         clients = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
         currencies = ['EUR', 'PLN', 'RON']
         i = 0
@@ -263,15 +262,12 @@ class LongTest(unittest.TestCase):
         while i < 50000:
             clientID = random.choice(clients)
             currencyID = random.choice(currencies)
-            # free = decimal.Decimal(random.randint(100, 1000))
-            # credit = decimal.Decimal(random.randint(100, 1000))
-            free = random.randint(100, 1000)
-            credit = random.randint(100, 1000)
-
+            free = decimal.Decimal(random.randint(100, 1000))
+            credit = decimal.Decimal(random.randint(100, 1000))
             data.append({'clientID': clientID, 'currencyID': currencyID,
                          'free': free, 'credit': credit})
             i += 1
 
-        import json
-        from rel2tree.encoders import DecimalJSONEncoder
-        print(json.dumps(a._create(data), cls=DecimalJSONEncoder, indent=2))
+        print('start')
+        print(a.feed(data).get())
+        print('end')

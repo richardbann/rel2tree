@@ -1,113 +1,112 @@
-from collections import OrderedDict
+import copy
 
 
-class AggregatorBase(object):
-    _creation_counter = 0
+def id(x):
+    return x
 
-    def _aggregator(self, records, inner):
-        return records
 
-    def _ensure_attr(self, kwargs, attrname):
-        if attrname in kwargs:
-            setattr(self, attrname, kwargs.pop(attrname))
-        elif not hasattr(self, attrname):
-            setattr(self, attrname, None)
+def const(x):
+    return lambda a: x
 
-    def __init__(self, **kwargs):
-        self._creation_counter = AggregatorBase._creation_counter
-        AggregatorBase._creation_counter += 1
-        self._ensure_attr(kwargs, '_aggregator')
-        self._ensure_attr(kwargs, '_where')
-        if kwargs:
-            msg = ', '.join(['%s: %s' % (k, v) for k, v in kwargs.items()])
-            msg = 'Invalid fields in Aggregator: %s' % msg
-            raise TypeError(msg)
-        self._all = []
 
-    def _create(self, records, inner=False):
+class Field:
+    def __init__(self, _where=None, _sortkey=None, _aggregator=id):
+        if _where is not None:
+            assert callable(_where), '_where must be callable'
+        if _sortkey is not None:
+            assert callable(_sortkey), '_sortkey must be callable'
+        assert callable(_aggregator), '_aggregator must be callable'
+
+        self._list = []
+        self._where = _where
+        self._sortkey = _sortkey
+        self._aggregator = _aggregator
+
+    def feed(self, iterable):
+        self._list = iterable
+        return self
+
+    def applywhere(self):
         if self._where:
-            records = [r for r in records if self._where(r)]
-        return self._aggregator(records, inner)
+            self._list = [r for r in self._list if self._where(r)]
+
+    def applysort(self):
+        if self._sortkey:
+            self._list.sort(key=self._sortkey)
+
+    def get(self):
+        self.applywhere()
+        self.applysort()
+        return self._aggregator([r for r in self._list])
 
 
-class HavingMixin(object):
-    def __init__(self, **kwargs):
-        self._ensure_attr(kwargs, '_having')
-        super(HavingMixin, self).__init__(**kwargs)
+class Computed:
+    def __init__(self, fnc=id):
+        assert callable(fnc), 'fnc must be callable'
+        self._fnc = fnc
 
-    def _create(self, records, inner=False):
-        records = super(HavingMixin, self)._create(records, inner)
-        if not inner and self._having:
-            return [r for r in records if self._having(r)]
-        return records
+    def get(self, _dict):
+        return self._fnc(_dict)
 
 
-class SortingMixin(object):
-    def __init__(self, **kwargs):
-        self._ensure_attr(kwargs, '_sortkey')
-        super(SortingMixin, self).__init__(**kwargs)
+class Dict(Field):
+    def __init__(self, _where=None, _sortkey=None, **kwargs):
+        super().__init__(_where, _sortkey)
+        for k, v in kwargs.items():
+            if not isinstance(v, Field) and not isinstance(v, Computed):
+                raise Exception('invalid field: %s' % k)
+        self._fields = {
+            k: v for k, v in kwargs.items() if isinstance(v, Field)
+        }
+        self._computed_fields = {
+            k: v for k, v in kwargs.items() if isinstance(v, Computed)
+        }
 
-    def _create(self, records, inner=False):
-        records = super(SortingMixin, self)._create(records, inner)
-        if not inner and self._sortkey:
-            records.sort(key=self._sortkey)
-        return records
+    def get(self):
+        self.applywhere()
+        self.applysort()
+        for n, f in self._fields.items():
+            try:
+                f.feed(self._list)
+            except Exception:
+                print(n, f)
 
-
-class Constant(AggregatorBase):
-    def __init__(self, value=None):
-        self.value = value
-        super(Constant, self).__init__()
-
-    def _aggregator(self, records, inner):
-        return self.value
-
-
-class Computed(AggregatorBase):
-    def __init__(self, fnc):
-        self.fnc = fnc
-        super(Computed, self).__init__()
-
-    def _aggregator(self, records, inner):
-        return None
-
-    def _compute(self, parent):
-        return self.fnc(parent)
-
-
-class Struct(AggregatorBase):
-    def __init__(self, **kwargs):
-        self._fields = []
-        for field_name in list(kwargs):
-            val = kwargs[field_name]
-            if isinstance(val, AggregatorBase):
-                self._fields.append((field_name, val))
-                kwargs.pop(field_name)
-        self._fields.sort(key=lambda f: f[1]._creation_counter)
-        super(Struct, self).__init__(**kwargs)
-
-    def _aggregator(self, records, inner):
-        ret = [(f, v._create(records)) for f, v in self._fields]
-        ret = OrderedDict(ret)
-        comp = [(f, v) for f, v in self._fields if isinstance(v, Computed)]
-        for f, v in comp:
-            ret[f] = v._compute(ret)
+        ret = {n: f.get() for n, f in self._fields.items()}
+        comp = {n: f.get(ret) for n, f in self._computed_fields.items()}
+        ret.update(comp)
         return ret
 
 
-class GroupBy(SortingMixin, HavingMixin, Struct):
-    def __init__(self, **kwargs):
-        self._ensure_attr(kwargs, '_grouping')
-        super(GroupBy, self).__init__(**kwargs)
+class GroupBy(Field):
+    def __init__(
+        self, field=Field(), _groupkey=const(0),
+        _where=None, _sortkey=None, _having=None, _post_sortkey=None
+    ):
+        super().__init__(_where, _sortkey)
+        if _groupkey is not None:
+            assert callable(_groupkey), '_groupkey must be callable'
+        if _having is not None:
+            assert callable(_having), '_having must be callable'
+        if _post_sortkey is not None:
+            assert callable(_post_sortkey), '_post_sortkey must be callable'
+        assert isinstance(field, Field), 'invalid field in GroupBy'
 
-    def _aggregator(self, records, inner):
-        if inner:
-            return super(GroupBy, self)._aggregator(records, False)
+        self.field = field
+        self._groupkey = _groupkey or const(0)
+        self._having = _having
+        self._post_sortkey = _post_sortkey
 
-        ret = OrderedDict()
-        for r in records:
-            key = self._grouping(r)
-            if key not in ret:
-                ret[key] = []
+    def get(self):
+        self.applywhere()
+        self.applysort()
+        ret = {}
+        for r in self._list:
+            key = self._groupkey(r)
+            ret.setdefault(key, [])
             ret[key].append(r)
-        return [self._create(v, True) for v in ret.values()]
+        ret = [copy.copy(self.field).feed(g).get() for g in ret.values()]
+        if self._having:
+            ret = [r for r in ret if self._having(r)]
+        if self._post_sortkey:
+            ret.sort(key=self._post_sortkey)
+        return ret
