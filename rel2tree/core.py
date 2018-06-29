@@ -41,7 +41,7 @@ class Field:
 
 
 class Computed:
-    def __init__(self, fnc=id):
+    def __init__(self, fnc=const(None)):
         assert callable(fnc), 'fnc must be callable'
         self._fnc = fnc
 
@@ -49,29 +49,43 @@ class Computed:
         return self._fnc(_dict)
 
 
+class GroupKey():
+    def get(self, _groupkey):
+        return _groupkey
+
+
 class Dict(Field):
     def __init__(self, _where=None, _sortkey=None, **kwargs):
         super().__init__(_where, _sortkey)
         for k, v in kwargs.items():
-            if not isinstance(v, Field) and not isinstance(v, Computed):
+            if (
+                not isinstance(v, Field) and
+                not isinstance(v, Computed) and
+                not isinstance(v, GroupKey)
+            ):
                 raise Exception('invalid field: %s' % k)
         self._fields = {
-            k: v for k, v in kwargs.items() if isinstance(v, Field)
+            k: v for k, v in kwargs.items() if (
+                isinstance(v, Field) or isinstance(v, GroupKey)
+            )
         }
         self._computed_fields = {
             k: v for k, v in kwargs.items() if isinstance(v, Computed)
         }
 
-    def get(self):
+    def get(self, _groupkey=None):
         self.applywhere()
         self.applysort()
-        for n, f in self._fields.items():
-            try:
-                f.feed(self._list)
-            except Exception:
-                print(n, f)
 
-        ret = {n: f.get() for n, f in self._fields.items()}
+        for n, f in self._fields.items():
+            # not all fields need to be feed
+            if hasattr(f, 'feed'):
+                f.feed(self._list)
+
+        ret = {
+            n: _groupkey if isinstance(f, GroupKey) else f.get()
+            for n, f in self._fields.items()
+        }
         comp = {n: f.get(ret) for n, f in self._computed_fields.items()}
         ret.update(comp)
         return ret
@@ -104,7 +118,10 @@ class GroupBy(Field):
             key = self._groupkey(r)
             ret.setdefault(key, [])
             ret[key].append(r)
-        ret = [copy.copy(self.field).feed(g).get() for g in ret.values()]
+        ret = [
+            copy.copy(self.field).feed(g).get(_groupkey=k)
+            for k, g in ret.items()
+        ]
         if self._having:
             ret = [r for r in ret if self._having(r)]
         if self._post_sortkey:
