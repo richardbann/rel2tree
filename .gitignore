@@ -1,6 +1,7 @@
-*.pyc
 __pycache__
 *.egg-info
-.coverage
-htmlcov
-dist
+/.coverage
+/htmlcov
+/dist
+/docs/build
+/.secret.env

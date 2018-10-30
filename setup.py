@@ -1,18 +1,21 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 from setuptools import setup
-from rel2tree import __version__
+import os
+import io
 
-with open('README') as readme_file:
-    readme = readme_file.read()
 
+here = os.path.abspath(os.path.dirname(__file__))
+
+with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
+    long_description = '\n' + f.read()
+
+VERSION = '0.4.0'
 
 setup(
     name='rel2tree',
-    version=__version__,
-    description="Convert relational data to tree-like structure (JSON)",
-    long_description=readme,
+    description='Convert relational data to tree-like structure (JSON)',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    version=VERSION,
     author="Richard Bann",
     author_email='richardbann@gmail.com',
     url='https://github.com/richardbann/rel2tree',
@@ -24,7 +27,6 @@ setup(
     classifiers=[
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
-        'Natural Language :: English',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
     ],

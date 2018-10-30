@@ -1,4 +1,4 @@
-.git
-htmlcov
-dist
-*.egg-info
+/.git
+/htmlcov
+/dist
+/*.egg-info

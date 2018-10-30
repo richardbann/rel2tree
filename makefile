@@ -1,55 +1,28 @@
 SHELL=/bin/bash
+version := $(shell sed -rn "s/^VERSION = '(.*)'$$/\1/p" setup.py)
 
-usr := $(shell id -u):$(shell id -g)
-img := richardbann/rel2tree
+clean:
+	docker-compose run --rm postgres find . -type d -name __pycache__ -exec rm -rf {} +
 
-################################################################################
-# self documenting makefile
-################################################################################
-.DEFAULT_GOAL := help
-.PHONY: help
-help: bold = $(shell tput bold; tput setaf 3)
-help: reset = $(shell tput sgr0)
-help:
-	@echo
-	@sed -nr \
-		-e '/^## /{s/^## /    /;h;:a;n;/^## /{s/^## /    /;H;ba};' \
-		-e '/^[[:alnum:]_\-]+:/ {s/(.+):.*$$/$(bold)\1$(reset):/;G;p};' \
-		-e 's/^[[:alnum:]_\-]+://;x}' ${MAKEFILE_LIST}
-	@echo
-################################################################################
-.PHONY: build
-## Build the docker container
+version:
+	@echo $(version)
+
 build:
-	docker build -t $(img) .
-################################################################################
+	docker-compose build
+
 .PHONY: test
-## Run tests
 test:
-	docker run --rm -i -u $(usr) \
-		-v "$(CURDIR):/project" \
-		-e "PYTHONPATH=/project" \
-		-w "/project" \
-		$(img) coverage run -m unittest discover
-	docker run --rm -u $(usr) \
-		-v "$(CURDIR):/project" \
-		-w "/project" \
-		$(img) coverage html
-################################################################################
-.PHONY: deploy
-## deploy to pypi
-deploy:
-	-rm -rf dist
-	docker run --rm -i -u $(usr) \
-		-v "$(CURDIR):/project" \
-		-w "/project" \
-		$(img) python3 setup.py sdist
-	docker run --rm -i -t -u $(usr) \
-		-v "$(CURDIR):/project" \
-		-w "/project" \
-		$(img) twine upload dist/*
-################################################################################
-.PHONY: pycclean
-## delete .pyc files
-pycclean:
-	@find . -name "*.py[c|o]" -delete -o -name __pycache__ -delete
+	docker-compose run --rm python bash -c "\
+		coverage run --branch --source rel2tree -m unittest && \
+		coverage report && \
+		coverage html \
+	"
+
+.PHONY: docs
+docs:
+	docker-compose run --rm python sphinx-build -b html docs/source docs/build
+
+distribute: build test docs
+	docker-compose run --rm python distribute
+	git tag $(version)
+	git push --tags
