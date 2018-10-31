@@ -1,129 +1,99 @@
 import copy
 
 
-def id(x):
+def _(x):
     return x
 
 
-def const(x):
-    return lambda a: x
-
-
-class Field:
-    def __init__(self, _where=None, _sortkey=None, _aggregator=id):
-        if _where is not None:
-            assert callable(_where), '_where must be callable'
-        if _sortkey is not None:
-            assert callable(_sortkey), '_sortkey must be callable'
-        assert callable(_aggregator), '_aggregator must be callable'
-
+class Aggregator:
+    def __init__(self, aggregator, _where=None, _sortkey=None):
         self._list = []
         self._where = _where
         self._sortkey = _sortkey
-        self._aggregator = _aggregator
+        self._aggregator = aggregator
 
     def feed(self, iterable):
-        self._list = iterable
+        self._list.extend(iterable)
         return self
 
-    def applywhere(self):
+    def apply_clauses(self):
+        lst = self._list
         if self._where:
-            self._list = [r for r in self._list if self._where(r)]
-
-    def applysort(self):
+            lst = [r for r in lst if self._where(r)]
+            if self._sortkey:
+                lst.sort(key=self._sortkey)
+                return lst
+            return lst
         if self._sortkey:
-            self._list.sort(key=self._sortkey)
-
-    def get(self):
-        self.applywhere()
-        self.applysort()
-        return self._aggregator([r for r in self._list])
-
-
-class Computed:
-    def __init__(self, fnc=const(None)):
-        assert callable(fnc), 'fnc must be callable'
-        self._fnc = fnc
-
-    def get(self, _dict):
-        return self._fnc(_dict)
-
-
-class GroupKey():
-    def get(self, _groupkey):
-        return _groupkey
-
-
-class Dict(Field):
-    def __init__(self, _where=None, _sortkey=None, **kwargs):
-        super().__init__(_where, _sortkey)
-        for k, v in kwargs.items():
-            if (
-                not isinstance(v, Field) and
-                not isinstance(v, Computed) and
-                not isinstance(v, GroupKey)
-            ):
-                raise Exception('invalid field: %s' % k)
-        self._fields = {
-            k: v for k, v in kwargs.items() if (
-                isinstance(v, Field) or isinstance(v, GroupKey)
-            )
-        }
-        self._computed_fields = {
-            k: v for k, v in kwargs.items() if isinstance(v, Computed)
-        }
+            return sorted(lst, key=self._sortkey)
+        return lst
 
     def get(self, _groupkey=None):
-        self.applywhere()
-        self.applysort()
+        lst = self.apply_clauses()
+        return self._aggregator(lst)
+
+
+class Const:
+    def __init__(self, value):
+        self._value = value
+
+    def feed(self, iterable):
+        pass
+
+    def get(self, _groupkey=None):
+        return self._value
+
+
+class GroupKey(Const):
+    def __init__(self, transform):
+        super().__init__(0)
+        self.transform = transform
+
+    def get(self, _groupkey=None):
+            return self.transform(_groupkey)
+
+
+class Dict(Aggregator):
+    def __init__(self, _where=None, _sortkey=None, **kwargs):
+        super().__init__(_, _where, _sortkey)
+        self._fields = kwargs
+
+    def get(self, _groupkey=None):
+        lst = self.apply_clauses()
 
         for n, f in self._fields.items():
-            # not all fields need to be feed
-            if hasattr(f, 'feed'):
-                f.feed(self._list)
+            f.feed(lst)
 
-        ret = {
-            n: _groupkey if isinstance(f, GroupKey) else f.get()
-            for n, f in self._fields.items()
-        }
-        comp = {n: f.get(ret) for n, f in self._computed_fields.items()}
-        ret.update(comp)
-        return ret
+        return {n: f.get(_groupkey=_groupkey) for n, f in self._fields.items()}
 
 
-class GroupBy(Field):
+class GroupBy(Aggregator):
     def __init__(
-        self, field=Field(), _groupkey=const(0),
+        self, aggregator, groupkey,
         _where=None, _sortkey=None, _having=None, _post_sortkey=None
     ):
-        super().__init__(_where, _sortkey)
-        if _groupkey is not None:
-            assert callable(_groupkey), '_groupkey must be callable'
-        if _having is not None:
-            assert callable(_having), '_having must be callable'
-        if _post_sortkey is not None:
-            assert callable(_post_sortkey), '_post_sortkey must be callable'
-        assert isinstance(field, Field), 'invalid field in GroupBy'
-
-        self.field = field
-        self._groupkey = _groupkey or const(0)
+        super().__init__(_, _where, _sortkey)
+        self.aggregator = aggregator
+        self.groupkey = groupkey
         self._having = _having
         self._post_sortkey = _post_sortkey
 
-    def get(self):
-        self.applywhere()
-        self.applysort()
+    def get(self, _groupkey=None):
+        lst = self.apply_clauses()
         ret = {}
-        for r in self._list:
-            key = self._groupkey(r)
+        for r in lst:
+            key = self.groupkey(r)
             ret.setdefault(key, [])
             ret[key].append(r)
+
         ret = [
-            copy.copy(self.field).feed(g).get(_groupkey=k)
+            copy.deepcopy(self.aggregator).feed(g).get(_groupkey=k)
             for k, g in ret.items()
         ]
+
         if self._having:
             ret = [r for r in ret if self._having(r)]
         if self._post_sortkey:
             ret.sort(key=self._post_sortkey)
+
         return ret

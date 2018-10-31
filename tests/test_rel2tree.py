@@ -1,273 +1,264 @@
 import unittest
-import random
-import decimal
+from datetime import date
 
-# from rel2tree.utils import Sum, SumField, List, GroupByFields, GroupingField
-from rel2tree.core import Field, Dict, Computed
-from rel2tree.fields import Const, SumField, PickField, GroupByFields
+from rel2tree.core import Aggregator, Dict, GroupBy, GroupKey, Const, _
+from rel2tree.fields import (
+    MinField, MaxField, SumField, List, GroupByFields,
+    GroupKeyField, AvgField, ListFields
+)
 
 
-def id(x):
-    return x
+def neg(x):
+    return -x
 
 
 def even(x):
     return x % 2 == 0
 
 
-class SimpleTestCase(unittest.TestCase):
-    # @unittest.skip('test')
-    def test_field(self):
-        f = Field(_aggregator=sum)
-        f.feed([1, 2, 3])
-        self.assertEqual(f.get(), 6)
+def first(x):
+    if len(x):
+        return x[0]
+    return None
 
-    # @unittest.skip('test')
-    def test_where(self):
-        f = Field(_aggregator=sum, _where=even)
-        f.feed([1, 2, 3])
-        self.assertEqual(f.get(), 2)
 
-    # @unittest.skip('test')
-    def test_sort(self):
-        f = Field(_aggregator=id, _sortkey=id)
-        f.feed([2, 1, 3])
-        self.assertEqual(f.get(), [1, 2, 3])
+def const(x):
+    def _inner(i):
+        return x
+    return _inner
 
-    # @unittest.skip('test')
-    def test_empty(self):
-        f = Field(_aggregator=sum)
-        self.assertEqual(f.get(), 0)
 
-    # @unittest.skip('test')
+class AggregatorTestCase(unittest.TestCase):
+    def test_aggregator(self):
+        a = Aggregator(_)
+        a.feed([1, 2, 3])
+        self.assertEqual(a.get(), [1, 2, 3])
+
+    def test_aggregator_clause(self):
+        a = Aggregator(sum, _where=even)
+        a.feed([1, 2, 3, 4])
+        self.assertEqual(a.get(), 6)
+
+    def test_aggregator_sort(self):
+        a = Aggregator(first, _where=even, _sortkey=neg)
+        a.feed([1, 2, 3, 4])
+        self.assertEqual(a.get(), 4)
+
+    def test_aggregator_sort_only(self):
+        a = Aggregator(first, _sortkey=neg)
+        a.feed([1, 2, 3])
+        self.assertEqual(a.get(), 3)
+        a.feed([4, 5])
+        self.assertEqual(a.get(), 5)
+        a.feed([0])
+        self.assertEqual(a.get(), 5)
+
+
+class DictTestCase(unittest.TestCase):
     def test_dict(self):
-        f = Dict(
-            c=Const('const'),
-            s=Field(_aggregator=sum)
+        a = Dict(
+            const=Aggregator(const(3))
         )
-        self.assertEqual(f.get(), {'c': 'const', 's': 0})
+        a.feed([1, 2, 3])
+        self.assertEqual(a.get(), {'const': 3})
 
-    # @unittest.skip('test')
-    def test_computed(self):
-        f = Dict(
-            c=Const('const'),
-            s=Field(_aggregator=sum),
-            comp=Computed(lambda r: r['s'] * 2)
+        b = Dict(
+            items=Aggregator(_),
+            sum=Aggregator(sum)
         )
-        f.feed([1, 2, 3, 4])
-        self.assertEqual(f.get(), {'c': 'const', 's': 10, 'comp': 20})
+        b.feed([1, 2, 3])
+        self.assertEqual(b.get(), {'items': [1, 2, 3], 'sum': 6})
 
-    # @unittest.skip('test')
+
+class GroupByTestCase(unittest.TestCase):
     def test_groupby(self):
-        f = GroupByFields('typ', field=Dict(
-                typ=PickField('typ'),
-                sum=SumField('n'),
-            ))
-        f.feed([
-            {'typ': 'A', 'n': 1},
-            {'typ': 'A', 'n': 2},
-            {'typ': 'A', 'n': 3},
-            {'typ': 'A', 'n': 4},
-            {'typ': 'B', 'n': 5},
-            {'typ': 'B', 'n': 6},
-        ])
-        self.assertEqual(f.get(), [
-            {'typ': 'A', 'sum': 10}, {'typ': 'B', 'sum': 11}
-        ])
-
-    # @unittest.skip('test')
-    def test_simple_dict(self):
         a = Dict(
-            sum=SumField('num'),
-            something=Const(2),
-            maxinlist=Computed(
-                lambda r: max([l['num'] for l in r['list']])
-            ),
-            list=Field(
-                _sortkey=lambda r: -r['num'],
-                _where=lambda r: r['num'] < 4
-            ),
+            report=Const('X001'),
+            groups=GroupBy(
+                Dict(
+                    key=GroupKey(_),
+                    values=Aggregator(lambda x: [v['v'] for v in x]),
+                    sum=Aggregator(lambda x: sum([v['v'] for v in x]))
+                ),
+                lambda x: x['g'],
+                _sortkey=lambda x: x['v'],
+                _post_sortkey=lambda x: x['key'],
+                _having=lambda x: x['key'] in ('a', 'b')
+            )
+        )
+        a.feed([
+            {'g': 'a', 'v': 3},
+            {'g': 'c', 'v': 2},
+            {'g': 'a', 'v': 1},
+            {'g': 'b', 'v': 4},
+            {'g': 'c', 'v': 5},
+        ])
+        self.assertEqual(
+            a.get(),
+            {
+                'report': 'X001',
+                'groups': [
+                    {'key': 'a', 'values': [1, 3], 'sum': 4},
+                    {'key': 'b', 'values': [4], 'sum': 4}
+                ]
+            }
         )
 
-        data = [
-            {'num': 1},
-            {'num': 2},
-            {'num': 3},
-            {'num': 4},
-            {'num': 5}
-        ]
-
-        self.assertEqual(a.feed(data).get(), dict([
-            ('sum', 15),
-            ('something', 2),
-            ('maxinlist', 3),
-            ('list', [{'num': 3}, {'num': 2}, {'num': 1}]),
-        ]))
-
-    # @unittest.skip('test')
-    def test_complex(self):
-        def include_client(client):
-            return len(client['free']) + len(client['credit'])
-
-        def get_currencies(client):
-            currs = list(set([f['currencyID'] for f in client['free']] +
-                             [c['currencyID'] for c in client['credit']]))
-            currs.sort()
-            return currs
-
-        def balanceitem(o):
-            return 'free' in o or 'credit' in o
-
+    def test_groupby_no_clause(self):
         a = Dict(
-            _where=lambda x: x['clientID'] != 444,
-            balances=GroupByFields(
-                'clientID',
-                _where=balanceitem,
-                _having=include_client,
-                _post_sortkey=lambda o: o['clientID'],
-                field=Dict(
-                    clientID=PickField('clientID'),
-                    free=GroupByFields(
-                        'currencyID',
-                        _where=lambda o: 'free' in o,
-                        _having=lambda o: o['amount'],
-                        _post_sortkey=lambda o: o['currencyID'],
-                        field=Dict(
-                            currencyID=PickField('currencyID'),
-                            amount=SumField('free')
-                        )
+            report=Const('X001'),
+            groups=GroupBy(
+                Dict(
+                    key=GroupKey(_),
+                    values=Aggregator(
+                        lambda x: [v['v'] for v in x],
+                        _sortkey=lambda x: x['v']
                     ),
-                    credit=GroupByFields(
-                        'currencyID',
-                        _where=lambda o: 'credit' in o,
-                        _having=lambda o: o['amount'],
-                        _post_sortkey=lambda o: o['currencyID'],
-                        field=Dict(
-                            currencyID=PickField('currencyID'),
-                            amount=SumField('credit')
-                        )
-                    ),
-                    currencies=Computed(get_currencies)
-                )
-            ),
-            clientDetails=GroupByFields(
-                'clientID',
-                _where=lambda o: 'clientCode' in o,
-                _sortkey=lambda o: o['clientCode'],
-                field=Dict(
-                    clientID=PickField('clientID'),
-                    clientCode=PickField('clientCode'),
-                )
+                    sum=Aggregator(lambda x: sum([v['v'] for v in x]))
+                ),
+                lambda x: x['g'],
+            )
+        )
+        a.feed([
+            {'g': 'a', 'v': 3},
+            {'g': 'c', 'v': 2},
+            {'g': 'a', 'v': 1},
+            {'g': 'b', 'v': 4},
+            {'g': 'c', 'v': 5},
+        ])
+        self.assertEqual(
+            a.get(),
+            {
+                'report': 'X001',
+                'groups': [
+                    {'key': 'a', 'values': [1, 3], 'sum': 4},
+                    {'key': 'c', 'values': [2, 5], 'sum': 7},
+                    {'key': 'b', 'values': [4], 'sum': 4}
+                ]
+            }
+        )
+
+
+class FieldsTestCase(unittest.TestCase):
+    def test_min_max_sum(self):
+        a = Dict(
+            all=Aggregator(_),
+            min=MinField('a'),
+            max=MaxField('a'),
+            sum=SumField('a')
+        )
+        a.feed([
+            {'a': 1},
+            {'a': 2},
+            {'a': 3},
+            {'a': 4},
+            {'a': 5},
+            {'a': 6},
+        ])
+        self.assertEqual(
+            a.get(), {
+                'all': [
+                    {'a': 1}, {'a': 2}, {'a': 3},
+                    {'a': 4}, {'a': 5}, {'a': 6}
+                ],
+                'min': 1,
+                'max': 6,
+                'sum': 21
+            }
+        )
+
+    def test_transform(self):
+        a = List(
+            lambda x: {
+                'first': x['fn'],
+                'last': x['ln'],
+                'full': x['fn'] + ' ' + x['ln']
+            }
+        )
+        a.feed([
+            {'fn': 'John', 'ln': 'Doe'},
+            {'fn': 'Eve', 'ln': 'Smith'},
+        ])
+        self.assertEqual(
+            a.get(), [
+                {'first': 'John', 'last': 'Doe', 'full': 'John Doe'},
+                {'first': 'Eve', 'last': 'Smith', 'full': 'Eve Smith'}
+            ]
+        )
+
+    def test_groub_by_fields(self):
+        a = GroupByFields(['a', 'b'], Dict(
+            a=GroupKeyField('a'),
+            b=GroupKeyField('b'),
+            c=SumField('c')
+        ))
+        a.feed([
+            {'a': 1, 'b': 1, 'c': 1},
+            {'a': 1, 'b': 1, 'c': 2},
+            {'a': 1, 'b': 2, 'c': 3},
+            {'a': 1, 'b': 2, 'c': 4},
+            {'a': 1, 'b': 2, 'c': 5},
+            {'a': 2, 'b': 1, 'c': 6},
+            {'a': 2, 'b': 2, 'c': 7},
+            {'a': 2, 'b': 3, 'c': 8},
+            {'a': 2, 'b': 3, 'c': 9},
+            {'a': 3, 'b': 1, 'c': 10},
+            {'a': 3, 'b': 1, 'c': 11},
+        ])
+        self.assertEqual(
+            a.get(), [
+                {'a': 1, 'b': 1, 'c': 3},
+                {'a': 1, 'b': 2, 'c': 12},
+                {'a': 2, 'b': 1, 'c': 6},
+                {'a': 2, 'b': 2, 'c': 7},
+                {'a': 2, 'b': 3, 'c': 17},
+                {'a': 3, 'b': 1, 'c': 21}
+            ]
+        )
+
+    def test_real_example(self):
+        min, max = date(2018, 10, 2), date(2018, 10, 4)
+        a = GroupByFields(['name'], Dict(
+            name=GroupKeyField('name'),
+            avg=AvgField('price'),
+            prices=ListFields([
+                'date',
+                'price'
+            ])
+        ),
+            _where=lambda x: (
+                (not min or x['date'] >= min) and
+                (not max or x['date'] <= max)
             )
         )
 
-        data = [
-            {'clientID': 222, 'currencyID': 'EUR', 'free': 123},
-            {'clientID': 111, 'currencyID': 'EUR', 'free': 123},
-            {'clientID': 111, 'currencyID': 'EUR', 'credit': 50},
-            {'clientID': 111, 'currencyID': 'PLN', 'free': 20},
-            {'clientID': 111, 'currencyID': 'EUR', 'free': 2},
-            {'clientID': 111, 'currencyID': 'PLN', 'free': -18},
-            {'clientID': 111, 'currencyID': 'PLN', 'free': -2},
-            {'clientID': 222, 'currencyID': 'EUR', 'free': -123},
-            {'clientID': 333, 'currencyID': 'GBP', 'free': 200},
-            {'clientID': 333, 'currencyID': 'EUR', 'free': 123},
-            {'clientID': 444, 'currencyID': 'EUR', 'free': 2000},
-            {'clientID': 333, 'clientCode': '00333'},
-            {'clientID': 111, 'clientCode': '00111'},
-        ]
-
-        self.assertEqual(a.feed(data).get(), dict([
-            ('balances', [
-                dict([
-                    ('clientID', 111),
-                    ('free', [
-                        dict([('currencyID', 'EUR'), ('amount', 125)]),
-                    ]),
-                    ('credit', [
-                        dict([('currencyID', 'EUR'), ('amount', 50)]),
-                    ]),
-                    ('currencies', ['EUR']),
-                ]),
-                dict([
-                    ('clientID', 333),
-                    ('free', [
-                        dict([('currencyID', 'EUR'), ('amount', 123)]),
-                        dict([('currencyID', 'GBP'), ('amount', 200)]),
-                    ]),
-                    ('credit', []),
-                    ('currencies', ['EUR', 'GBP']),
-                ]),
-            ]),
-            ('clientDetails', [
-                dict([('clientID', 111), ('clientCode', '00111')]),
-                dict([('clientID', 333), ('clientCode', '00333')]),
-            ]),
-        ]))
-
-
-# @unittest.skip('only for performance measuring')
-class LongTest(unittest.TestCase):
-    def test_many(self):
-        def include_client(client):
-            return len(client['free']) + len(client['credit'])
-
-        def get_currencies(client):
-            currs = list(set([f['currencyID'] for f in client['free']] +
-                             [c['currencyID'] for c in client['credit']]))
-            currs.sort()
-            return currs
-
-        def balanceitem(o):
-            return 'free' in o or 'credit' in o
-
-        a = Dict(
-            _where=lambda x: x['clientID'] != 444,
-            balances=GroupByFields(
-                'clientID',
-                _where=balanceitem,
-                _having=include_client,
-                _post_sortkey=lambda o: o['clientID'],
-                field=Dict(
-                    clientID=PickField('clientID'),
-                    free=GroupByFields(
-                        'currencyID',
-                        _where=lambda o: 'free' in o,
-                        _having=lambda o: o['amount'],
-                        _post_sortkey=lambda o: o['currencyID'],
-                        field=Dict(
-                            currencyID=PickField('currencyID'),
-                            amount=SumField('free')
-                        )
-                    ),
-                    credit=GroupByFields(
-                        'currencyID',
-                        _where=lambda o: 'credit' in o,
-                        _having=lambda o: o['amount'],
-                        _post_sortkey=lambda o: o['currencyID'],
-                        field=Dict(
-                            currencyID=PickField('currencyID'),
-                            amount=SumField('credit')
-                        )
-                    ),
-                    currencies=Computed(get_currencies)
-                )
-            )
+        a.feed([
+            {'name': 'A', 'date': date(2018, 10, 1), 'price': 1},
+            {'name': 'A', 'date': date(2018, 10, 2), 'price': 2},
+            {'name': 'A', 'date': date(2018, 10, 3), 'price': 3},
+            {'name': 'B', 'date': date(2018, 10, 1), 'price': 4},
+            {'name': 'B', 'date': date(2018, 10, 2), 'price': 5},
+            {'name': 'B', 'date': date(2018, 10, 3), 'price': 6},
+            {'name': 'B', 'date': date(2018, 10, 4), 'price': 7},
+        ])
+        self.assertEqual(
+            a.get(), [
+                {
+                    'name': 'A',
+                    'avg': 2.5,
+                    'prices': [
+                        {'date': date(2018, 10, 2), 'price': 2},
+                        {'date': date(2018, 10, 3), 'price': 3}
+                    ]
+                },
+                {
+                    'name': 'B',
+                    'avg': 6.0,
+                    'prices': [
+                        {'date': date(2018, 10, 2), 'price': 5},
+                        {'date': date(2018, 10, 3), 'price': 6},
+                        {'date': date(2018, 10, 4), 'price': 7}
+                    ]
+                }
+            ]
         )
-
-        clients = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-        currencies = ['EUR', 'PLN', 'RON']
-        i = 0
-        data = []
-        while i < 50000:
-            clientID = random.choice(clients)
-            currencyID = random.choice(currencies)
-            free = decimal.Decimal(random.randint(100, 1000))
-            credit = decimal.Decimal(random.randint(100, 1000))
-            data.append({'clientID': clientID, 'currencyID': currencyID,
-                         'free': free, 'credit': credit})
-            i += 1
-
-        print('start')
-        print(a.feed(data).get())
-        print('end')
