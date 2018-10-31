@@ -1,10 +1,10 @@
 import unittest
 from datetime import date
 
-from rel2tree.core import Aggregator, Dict, GroupBy, GroupKey, Const, _
+from rel2tree.core import Aggregator, Dict, GroupBy, GroupKey, _
 from rel2tree.fields import (
     MinField, MaxField, SumField, List, GroupByFields,
-    GroupKeyField, AvgField, ListFields
+    GroupKeyField, AvgField, ListFields, Const
 )
 
 
