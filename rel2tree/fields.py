@@ -1,5 +1,16 @@
 from collections import namedtuple
-from .core import Aggregator, GroupBy, GroupKey
+from .core import Aggregator, GroupBy, GroupKey, _
+
+
+def field(d):
+    def fnc(x):
+        return x.get(d)
+    return fnc
+
+
+class Const(GroupKey):
+    def __init__(self, value):
+        super().__init__(lambda x: value)
 
 
 class SumField(Aggregator):
@@ -25,7 +36,7 @@ class AvgField(Aggregator):
 
 
 class List(Aggregator):
-    def __init__(self, fnc, **kwargs):
+    def __init__(self, fnc=_, **kwargs):
         super().__init__(lambda x: [fnc(f) for f in x], **kwargs)
 
 

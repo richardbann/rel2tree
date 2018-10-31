@@ -33,24 +33,15 @@ class Aggregator:
         return self._aggregator(lst)
 
 
-class Const:
-    def __init__(self, value):
-        self._value = value
+class GroupKey:
+    def __init__(self, transform):
+        self.transform = transform
 
     def feed(self, iterable):
         pass
 
     def get(self, _groupkey=None):
-        return self._value
-
-
-class GroupKey(Const):
-    def __init__(self, transform):
-        super().__init__(0)
-        self.transform = transform
-
-    def get(self, _groupkey=None):
-            return self.transform(_groupkey)
+        return self.transform(_groupkey)
 
 
 class Dict(Aggregator):
@@ -65,6 +56,13 @@ class Dict(Aggregator):
             f.feed(lst)
 
         return {n: f.get(_groupkey=_groupkey) for n, f in self._fields.items()}
+
+
+class ListOf(Dict):
+    def get(self, _groupkey=None):
+        lst = self.apply_clauses()
+
+        return [{n: f(x) for n, f in self._fields.items()} for x in lst]
 
 
 class GroupBy(Aggregator):
