@@ -1,97 +1,79 @@
 import copy
 
 
-def _(x):
+def identity(x):
     return x
 
 
-class Aggregator:
-    def __init__(self, aggregator, _where=None, _sortkey=None):
-        self._list = []
+def const(c):
+    def fnc(*args):
+        return c
+    return fnc
+
+
+class Convert:
+    def __init__(self, fnc, _where=const(True), _sortkey=const(0)):
         self._where = _where
         self._sortkey = _sortkey
-        self._aggregator = aggregator
+        self.fnc = fnc
 
-    def feed(self, iterable):
-        self._list.extend(iterable)
-        return self
+    def _get(self, iterable, groupkey):
+        return self.fnc(iterable)
 
-    def apply_clauses(self):
-        lst = self._list
-        if self._where:
-            lst = [r for r in lst if self._where(r)]
-            if self._sortkey:
-                lst.sort(key=self._sortkey)
-                return lst
-            return lst
-        if self._sortkey:
-            return sorted(lst, key=self._sortkey)
-        return lst
-
-    def get(self, _groupkey=None):
-        lst = self.apply_clauses()
-        return self._aggregator(lst)
+    def get(self, iterable, groupkey=None):
+        iterable = [r for r in iterable if self._where(r)]
+        iterable.sort(key=self._sortkey)
+        return self._get(iterable, groupkey)
 
 
-class GroupKey:
-    def __init__(self, transform):
-        self.transform = transform
-
-    def feed(self, iterable):
-        pass
-
-    def get(self, _groupkey=None):
-        return self.transform(_groupkey)
+class Map(Convert):
+    def _get(self, iterable, groupkey):
+        return [self.fnc(x) for x in iterable]
 
 
-class Dict(Aggregator):
-    def __init__(self, _where=None, _sortkey=None, **kwargs):
-        super().__init__(_, _where, _sortkey)
-        self._fields = kwargs
-
-    def get(self, _groupkey=None):
-        lst = self.apply_clauses()
-
-        for n, f in self._fields.items():
-            f.feed(lst)
-
-        return {n: f.get(_groupkey=_groupkey) for n, f in self._fields.items()}
+class GroupKey(Convert):
+    def get(self, iterable, groupkey=None):
+        return self.fnc(groupkey)
 
 
-class ListOf(Dict):
-    def get(self, _groupkey=None):
-        lst = self.apply_clauses()
+class Dict(Convert):
+    def __init__(self, _where=const(True), _sortkey=const(0), **kwargs):
+        super().__init__(identity, _where, _sortkey)
+        self.fields = kwargs
 
-        return [{n: f(x) for n, f in self._fields.items()} for x in lst]
+    def _get(self, iterable, groupkey):
+        return {n: f.get(iterable, groupkey) for n, f in self.fields.items()}
 
 
-class GroupBy(Aggregator):
+class DictList(Dict):
+    def _get(self, iterable, groupkey):
+        return [{n: f(x) for n, f in self.fields.items()} for x in iterable]
+
+
+class GroupBy(Convert):
     def __init__(
-        self, aggregator, groupkey,
-        _where=None, _sortkey=None, _having=None, _post_sortkey=None
+        self, groupkey, groupconvert,
+        _where=const(True), _sortkey=const(0),
+        _having=None, _post_sortkey=None
     ):
-        super().__init__(_, _where, _sortkey)
-        self.aggregator = aggregator
+        super().__init__(identity, _where, _sortkey)
+        self.groupconvert = groupconvert
         self.groupkey = groupkey
         self._having = _having
         self._post_sortkey = _post_sortkey
 
-    def get(self, _groupkey=None):
-        lst = self.apply_clauses()
+    def _get(self, iterable, groupkey):
         ret = {}
-        for r in lst:
+        for r in iterable:
             key = self.groupkey(r)
             ret.setdefault(key, [])
             ret[key].append(r)
-
         ret = [
-            copy.deepcopy(self.aggregator).feed(g).get(_groupkey=k)
+            copy.deepcopy(self.groupconvert).get(g, k)
             for k, g in ret.items()
         ]
-
         if self._having:
             ret = [r for r in ret if self._having(r)]
         if self._post_sortkey:
             ret.sort(key=self._post_sortkey)
-
         return ret
