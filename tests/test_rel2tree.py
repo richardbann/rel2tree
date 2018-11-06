@@ -1,10 +1,14 @@
 import unittest
-from datetime import date
+# from datetime import date
 
-from rel2tree.core import identity, Convert, Map, const, Dict, GroupBy
-from rel2tree.core import GroupKey, DictList
-from rel2tree.utils import Const, field, SumField, MinField, MaxField
-from rel2tree.utils import GroupByFields, GroupKeyField, AvgField
+from rel2tree.core import Aggregator, Map, Dict, GroupBy
+from rel2tree.utils import const, Const, field, FirstField
+from rel2tree.utils import MinField, MaxField, SumField, AvgField
+from rel2tree.utils import GroupByFields
+
+
+def identity(x):
+    return x
 
 
 def neg(x):
@@ -21,21 +25,21 @@ def first(x):
     return None
 
 
-class ConvertTestCase(unittest.TestCase):
-    def test_convert(self):
-        a = Convert(identity)
+class AggregatorTestCase(unittest.TestCase):
+    def test_simple(self):
+        a = Aggregator(identity)
         self.assertEqual(a.get([1, 2, 3]), [1, 2, 3])
 
-    def test_convert_clause(self):
-        a = Convert(sum, _where=even)
+    def test_clause(self):
+        a = Aggregator(sum, _where=even)
         self.assertEqual(a.get([1, 2, 3, 4]), 6)
 
-    def test_convert_filter_sort(self):
-        a = Convert(first, _where=even, _sortkey=neg)
+    def test_filter_sort(self):
+        a = Aggregator(first, _where=even, _sortkey=neg)
         self.assertEqual(a.get([1, 2, 3, 4, 5]), 4)
 
-    def test_convert_sort_only(self):
-        a = Convert(first, _sortkey=neg)
+    def test_sort_only(self):
+        a = Aggregator(first, _sortkey=neg)
         self.assertEqual(a.get([1, 2, 3]), 3)
 
 
@@ -49,13 +53,13 @@ class DictTestCase(unittest.TestCase):
     def test_dict(self):
         lst = [1, 2, 3]
         a = Dict(
-            const=Convert(const(3))
+            const=Aggregator(const(3))
         )
         self.assertEqual(a.get(lst), {'const': 3})
 
         b = Dict(
-            items=Convert(identity),
-            sum=Convert(sum)
+            items=Aggregator(identity),
+            sum=Aggregator(sum)
         )
         self.assertEqual(b.get(lst), {'items': [1, 2, 3], 'sum': 6})
 
@@ -67,7 +71,7 @@ class GroupByTestCase(unittest.TestCase):
             groups=GroupBy(
                 field('g'),
                 Dict(
-                    key=GroupKey(identity),
+                    key=FirstField('g'),
                     values=Map(field('v')),
                     sum=SumField('v')
                 ),
@@ -100,7 +104,7 @@ class GroupByTestCase(unittest.TestCase):
             groups=GroupBy(
                 field('g'),
                 Dict(
-                    key=GroupKey(identity),
+                    key=FirstField('g'),
                     values=Map(field('v'), _sortkey=field('v')),
                     sum=SumField('v')
                 ),
@@ -128,7 +132,7 @@ class GroupByTestCase(unittest.TestCase):
 class FieldsTestCase(unittest.TestCase):
     def test_min_max_sum(self):
         a = Dict(
-            all=Convert(identity),
+            all=Aggregator(identity),
             min=MinField('a'),
             max=MaxField('a'),
             sum=SumField('a'),
@@ -155,26 +159,10 @@ class FieldsTestCase(unittest.TestCase):
             }
         )
 
-    def test_dictlist(self):
-        a = DictList(
-            first=field('fn'),
-            last=field('ln'),
-            full=lambda x: x['fn'] + ' ' + x['ln']
-        )
-        self.assertEqual(
-            a.get([
-                {'fn': 'John', 'ln': 'Doe'},
-                {'fn': 'Eve', 'ln': 'Smith'},
-            ]), [
-                {'first': 'John', 'last': 'Doe', 'full': 'John Doe'},
-                {'first': 'Eve', 'last': 'Smith', 'full': 'Eve Smith'}
-            ]
-        )
-
     def test_groub_by_fields(self):
         a = GroupByFields(['a', 'b'], Dict(
-                a=GroupKeyField('a'),
-                b=GroupKeyField('b'),
+                a=FirstField('a'),
+                b=FirstField('b'),
                 c=SumField('c')
         ))
         self.assertEqual(
@@ -197,52 +185,5 @@ class FieldsTestCase(unittest.TestCase):
                 {'a': 2, 'b': 2, 'c': 7},
                 {'a': 2, 'b': 3, 'c': 17},
                 {'a': 3, 'b': 1, 'c': 21}
-            ]
-        )
-
-    def test_real_example(self):
-        min, max = date(2018, 10, 2), date(2018, 10, 4)
-        a = GroupByFields(['name'], Dict(
-            name=GroupKeyField('name'),
-            avg=AvgField('price'),
-            prices=DictList(
-                date=field('date'),
-                price=field('price')
-            )
-        ),
-            _where=lambda x: (
-                (not min or x['date'] >= min) and
-                (not max or x['date'] <= max)
-            )
-        )
-
-        self.assertEqual(
-            a.get([
-                {'name': 'A', 'date': date(2018, 10, 1), 'price': 1},
-                {'name': 'A', 'date': date(2018, 10, 2), 'price': 2},
-                {'name': 'A', 'date': date(2018, 10, 3), 'price': 3},
-                {'name': 'B', 'date': date(2018, 10, 1), 'price': 4},
-                {'name': 'B', 'date': date(2018, 10, 2), 'price': 5},
-                {'name': 'B', 'date': date(2018, 10, 3), 'price': 6},
-                {'name': 'B', 'date': date(2018, 10, 4), 'price': 7},
-            ]),
-            [
-                {
-                    'name': 'A',
-                    'avg': 2.5,
-                    'prices': [
-                        {'date': date(2018, 10, 2), 'price': 2},
-                        {'date': date(2018, 10, 3), 'price': 3}
-                    ]
-                },
-                {
-                    'name': 'B',
-                    'avg': 6.0,
-                    'prices': [
-                        {'date': date(2018, 10, 2), 'price': 5},
-                        {'date': date(2018, 10, 3), 'price': 6},
-                        {'date': date(2018, 10, 4), 'price': 7}
-                    ]
-                }
             ]
         )

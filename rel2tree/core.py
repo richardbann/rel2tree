@@ -1,77 +1,55 @@
-import copy
-
-
-def identity(x):
-    return x
-
-
-def const(c):
-    def fnc(*args):
-        return c
-    return fnc
-
-
-class Convert:
-    def __init__(self, fnc, _where=const(True), _sortkey=const(0)):
+class Aggregator:
+    def __init__(self, fnc, _where=None, _sortkey=None):
         self._where = _where
         self._sortkey = _sortkey
         self.fnc = fnc
 
-    def _get(self, iterable, groupkey):
+    def _get(self, iterable):
         return self.fnc(iterable)
 
-    def get(self, iterable, groupkey=None):
-        iterable = [r for r in iterable if self._where(r)]
-        iterable.sort(key=self._sortkey)
-        return self._get(iterable, groupkey)
+    def get(self, iterable):
+        if self._where:
+            iterable = [r for r in iterable if self._where(r)]
+        else:
+            iterable = iterable.copy()
+        if self._sortkey:
+            iterable.sort(key=self._sortkey)
+        return self._get(iterable)
 
 
-class Map(Convert):
-    def _get(self, iterable, groupkey):
+class Map(Aggregator):
+    def _get(self, iterable):
         return [self.fnc(x) for x in iterable]
 
 
-class GroupKey(Convert):
-    def get(self, iterable, groupkey=None):
-        return self.fnc(groupkey)
-
-
-class Dict(Convert):
-    def __init__(self, _where=const(True), _sortkey=const(0), **kwargs):
-        super().__init__(identity, _where, _sortkey)
+class Dict(Aggregator):
+    def __init__(self, _where=None, _sortkey=None, **kwargs):
+        super().__init__(None, _where, _sortkey)
         self.fields = kwargs
 
-    def _get(self, iterable, groupkey):
-        return {n: f.get(iterable, groupkey) for n, f in self.fields.items()}
+    def _get(self, iterable):
+        return {k: v.get(iterable) for k, v in self.fields.items()}
 
 
-class DictList(Dict):
-    def _get(self, iterable, groupkey):
-        return [{n: f(x) for n, f in self.fields.items()} for x in iterable]
-
-
-class GroupBy(Convert):
+class GroupBy(Aggregator):
     def __init__(
-        self, groupkey, groupconvert,
-        _where=const(True), _sortkey=const(0),
+        self, groupkey, aggregator,
+        _where=None, _sortkey=None,
         _having=None, _post_sortkey=None
     ):
-        super().__init__(identity, _where, _sortkey)
-        self.groupconvert = groupconvert
+        super().__init__(None, _where, _sortkey)
+        self.aggregator = aggregator
         self.groupkey = groupkey
         self._having = _having
         self._post_sortkey = _post_sortkey
 
-    def _get(self, iterable, groupkey):
+    def _get(self, iterable):
         ret = {}
         for r in iterable:
             key = self.groupkey(r)
             ret.setdefault(key, [])
             ret[key].append(r)
-        ret = [
-            copy.deepcopy(self.groupconvert).get(g, k)
-            for k, g in ret.items()
-        ]
+        ret = [self.aggregator.get(g) for g in ret.values()]
         if self._having:
             ret = [r for r in ret if self._having(r)]
         if self._post_sortkey:

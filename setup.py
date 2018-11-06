@@ -8,7 +8,7 @@ here = os.path.abspath(os.path.dirname(__file__))
 with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = '\n' + f.read()
 
-VERSION = '4.0.0'
+VERSION = '5.0.0'
 
 setup(
     name='rel2tree',
