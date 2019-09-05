@@ -20,7 +20,7 @@ project = "rel2tree"
 # author = ""
 today_fmt = "%Y-%m-%d"
 
-with io.open(os.path.join(here, '../../setup.py'), encoding='utf-8') as f:
+with io.open(os.path.join(here, "../../setup.py"), encoding="utf-8") as f:
     version = re.search("^VERSION = '(.*)'$", f.read(), re.M).group(1)
 # version = os.environ.get("VERSION")
 # release = version
