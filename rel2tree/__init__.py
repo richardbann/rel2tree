@@ -1,3 +1,8 @@
+"""
+Module docs
+"""
+
+
 class L(list):
     """Slight modification of list so it can keep the groupkey."""
 

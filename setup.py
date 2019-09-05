@@ -7,12 +7,14 @@ here = os.path.abspath(os.path.dirname(__file__))
 with io.open(os.path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = "\n" + f.read()
 
+VERSION = '6.0.0'
+
 setup(
     name="rel2tree",
     description="",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    version="6.0.0",
+    version=VERSION,
     url="https://github.com/richardbann/rel2tree",
     author="Richard Bann",
     author_email="richardbann@gmail.com",
@@ -23,11 +25,11 @@ setup(
     extras_require={
         "dev": [
             "black >= 19.3b0",
-            # "coverage >= 4.5.2",
-            # "sphinx >= 1.8.4",
-            # "sphinx_rtd_theme >= 0.4.2",
-            # "twine >= 1.12.1",
-            # "wheel >= 0.32.3",
+            "coverage >= 4.5.4",
+            "sphinx >= 2.2.0",
+            "sphinx_rtd_theme >= 0.4.3",
+            "twine >= 1.13.0",
+            "wheel >= 0.33.6",
         ]
     },
     license="MIT",
