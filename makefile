@@ -1,6 +1,6 @@
 export PYTHONWARNINGS=default
 SHELL=/bin/bash
-version := $(shell sed -rn "s/^VERSION = '(.*)'$$/\1/p" setup.py)
+version := $(shell sed -rn "s/^VERSION = \"(.*)\"$$/\1/p" setup.py)
 
 
 .PHONY: init
