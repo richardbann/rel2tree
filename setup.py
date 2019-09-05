@@ -7,11 +7,11 @@ here = os.path.abspath(os.path.dirname(__file__))
 with io.open(os.path.join(here, "README.md"), encoding="utf-8") as f:
     long_description = "\n" + f.read()
 
-VERSION = "6.0.1"
+VERSION = "6.0.2"
 
 setup(
     name="rel2tree",
-    description="",
+    description="Convert a list of records to a JSON-like structure",
     long_description=long_description,
     long_description_content_type="text/markdown",
     version=VERSION,
