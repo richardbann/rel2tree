@@ -4,30 +4,32 @@ import io
 
 
 here = os.path.abspath(os.path.dirname(__file__))
-
-with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
-    long_description = '\n' + f.read()
-
-VERSION = '5.0.0'
+with io.open(os.path.join(here, "README.md"), encoding="utf-8") as f:
+    long_description = "\n" + f.read()
 
 setup(
-    name='rel2tree',
-    description='Convert relational data to tree-like structure (JSON)',
+    name="rel2tree",
+    description="",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    version=VERSION,
+    version="6.0.0",
+    url="https://github.com/richardbann/rel2tree",
     author="Richard Bann",
-    author_email='richardbann@gmail.com',
-    url='https://github.com/richardbann/rel2tree',
-    packages=['rel2tree'],
-    install_requires=[],
-    license="MIT license",
-    zip_safe=True,
-    keywords='data records JSON aggregate',
+    author_email="richardbann@gmail.com",
     classifiers=[
-        'Intended Audience :: Developers',
-        'License :: OSI Approved :: MIT License',
-        'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3.6",
     ],
+    extras_require={
+        "dev": [
+            "black >= 19.3b0",
+            # "coverage >= 4.5.2",
+            # "sphinx >= 1.8.4",
+            # "sphinx_rtd_theme >= 0.4.2",
+            # "twine >= 1.12.1",
+            # "wheel >= 0.32.3",
+        ]
+    },
+    license="MIT",
+    packages=["rel2tree"],
 )

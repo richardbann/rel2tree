@@ -1,7 +1,3 @@
-__pycache__
+.venv
 *.egg-info
-/.coverage
-/htmlcov
-/dist
-/docs/build
-/.secret.env
+__pycache__
