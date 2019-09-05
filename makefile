@@ -24,6 +24,6 @@ distribute:
 	mkdir -p dist
 	rm -f dist/*
 	.venv/bin/python setup.py sdist
-	# .venv/bin/twine upload dist/*
-	# git tag $(version)
-	# git push --tags
+	.venv/bin/twine upload dist/*
+	git tag $(version)
+	git push --tags
