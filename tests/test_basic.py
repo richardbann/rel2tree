@@ -1,21 +1,21 @@
 import unittest
 
-from rel2tree import F, const, groupkey
+from rel2tree import f
 
 
 class Test(unittest.TestCase):
     def test_simple(self):
-        self.assertEqual(F().t(sum)([1, 2, 3, 4]), 10)
-        self.assertEqual(F().map(lambda x: x + 1)([1, 2, 3, 4]), [2, 3, 4, 5])
-        self.assertEqual(F().filter(lambda x: x % 2 == 0)([1, 2, 3, 4]), [2, 4])
-        self.assertEqual(F().sort()([3, 2, 1]), [1, 2, 3])
-        self.assertEqual(F().sort(lambda x: -x)([1, 2, 3, 4]), [4, 3, 2, 1])
-        self.assertEqual(F().dict({"c": const(1)})([]), {"c": 1})
+        self.assertEqual(f.t(sum)([1, 2, 3, 4]), 10)
+        self.assertEqual(f.map(lambda x: x + 1)([1, 2, 3, 4]), [2, 3, 4, 5])
+        self.assertEqual(f.filter(lambda x: x % 2 == 0)([1, 2, 3, 4]), [2, 4])
+        self.assertEqual(f.sort()([3, 2, 1]), [1, 2, 3])
+        self.assertEqual(f.sort(lambda x: -x)([1, 2, 3, 4]), [4, 3, 2, 1])
+        self.assertEqual(f.dict({"c": 1})([]), {"c": 1})
         self.assertEqual(
-            F().groupby(
+            f.groupby(
                 lambda x: x["name"],
-                F().dict(
-                    {"name": groupkey(), "sum": F().map(lambda x: x["value"]).t(sum)}
+                f.dict(
+                    {"name": f.groupkey(), "sum": f.map(lambda x: x["value"]).t(sum)}
                 ),
             )(
                 [
@@ -27,66 +27,34 @@ class Test(unittest.TestCase):
             [{"name": "Jane", "sum": 6}, {"name": "Joe", "sum": 2}],
         )
         self.assertEqual(
-            F().groupby(lambda x: x["name"])([{"name": "Jane", "value": 5}]),
+            f.groupby(lambda x: x["name"])([{"name": "Jane", "value": 5}]),
             [[{"name": "Jane", "value": 5}]],
         )
         self.assertEqual(
-            F().groupby(lambda x: x["name"], F().dict({"name": groupkey(1)}))(
+            f.groupby(lambda x: x["name"], f.dict({"name": f.groupkey(1)}))(
                 [{"name": "Jane", "value": 5}]
             ),
             [{"name": None}],
         )
-
-
-# import pprint
-#
-# from rel2tree import F, const, groupkey
-#
-#
-# pprint.pprint(
-#     F()
-#     .map(lambda x: x + 1)
-#     .dict(
-#         {
-#             "even": F()
-#             .groupby(
-#                 lambda x: x % 11,
-#                 F().dict(
-#                     {
-#                         "divisor": const(11),
-#                         "remainder": groupkey(),
-#                         "numbers": F()
-#                         .groupby(
-#                             lambda x: x % 7,
-#                             F().dict(
-#                                 {
-#                                     "divisor": const(7),
-#                                     "remainder": groupkey(),
-#                                     "numbers": F(),
-#                                     "sum": F().t(sum),
-#                                 }
-#                             ),
-#                         )
-#                         .sort(lambda x: x["remainder"]),
-#                         "sum": F().t(sum),
-#                     }
-#                 ),
-#             )
-#             .sort(lambda x: x["remainder"]),
-#             "odd": F()
-#             .groupby(
-#                 lambda x: x % 7,
-#                 F().dict(
-#                     {
-#                         "divisor": const(7),
-#                         "remainder": groupkey(),
-#                         "numbers": F(),
-#                         "sum": F().t(sum),
-#                     }
-#                 ),
-#             )
-#             .sort(lambda x: x["remainder"]),
-#         }
-#     )(range(100)),
-#     width=100,
-# )
+        self.assertEqual(
+            f.groupby(lambda x: x % 2, f.distinct())([1, 1, 2, 3, 4, 4]),
+            [[1, 3], [2, 4]]
+        )
+        self.assertEqual(
+            f.groupby(lambda x: x[0], f.groupby(lambda x: x[1]))([
+                (1, "a"),
+                (1, "b"),
+                (1, "a"),
+                (2, "a"),
+                (2, "b"),
+                (2, "b"),
+            ]),
+            [
+                [
+                    [(1, "a"), (1, "a")], [(1, "b")]
+                ],
+                [
+                    [(2, "a")], [(2, "b"), (2, "b")]
+                ],
+            ]
+        )

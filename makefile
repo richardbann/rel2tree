@@ -15,10 +15,6 @@ test:
 	.venv/bin/coverage report
 	.venv/bin/coverage html
 
-.PHONY: docs
-docs:
-	.venv/bin/sphinx-build -b html docs/source docs/build
-
 .PHONY: distribute
 distribute:
 	mkdir -p dist

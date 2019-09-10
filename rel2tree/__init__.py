@@ -1,6 +1,4 @@
-"""
-Module docs
-"""
+__all__ = ["f", ]
 
 
 class L(list):
@@ -9,27 +7,6 @@ class L(list):
     def __init__(self, l, gk):
         self.gk = gk
         super().__init__(l)
-
-
-def groupkey(idx=0):
-    """Use it to access the group key deep inside a groupby.
-
-    In case of nested groupby's, groupkey(0) is the deepest level group key,
-    groupkey(1) is the one on the next level up.
-    """
-
-    def _(lst):
-        try:
-            return lst.gk[idx]
-        except (AttributeError, IndexError):
-            return None
-
-    return T(fnc=_)
-
-
-def const(c):
-    """Use it to receive a constant value."""
-    return lambda x: c
 
 
 class T:
@@ -47,6 +24,21 @@ class T:
         if self.parent:
             lst = self.parent(lst)
         return self.fnc(lst)
+
+    def groupkey(self, level=0):
+        """Use it to access the group key deep inside a groupby.
+
+        In case of nested groupby's, groupkey(0) is the deepest level group key,
+        groupkey(1) is the one on the next level up.
+        """
+
+        def _(lst):
+            try:
+                return lst.gk[level]
+            except (AttributeError, IndexError):
+                return None
+
+        return T(fnc=_)
 
 
 class F(T):
@@ -68,9 +60,11 @@ class F(T):
         return self.f(lambda x: sorted(x, key=fnc))
 
     def dict(self, d):
-        return self.t(lambda x: dict((k, v(x)) for k, v in d.items()))
+        return self.t(
+            lambda x: dict((k, v(x) if isinstance(v, T) else v) for k, v in d.items())
+        )
 
-    def groupby(self, fnc, f=None):
+    def groupby(self, fnc, f=None, groupkey=True):
         if not f:
             f = F()
 
@@ -78,9 +72,20 @@ class F(T):
             gb = {}
             for item in lst:
                 gk = fnc(item)
-                default = L([], [gk] + lst.gk) if isinstance(lst, L) else L([], [gk])
+                if not groupkey:
+                    default = []
+                elif isinstance(lst, L):
+                    default = L([], [gk] + lst.gk)
+                else:
+                    default = L([], [gk])
                 bucket = gb.setdefault(gk, default)
                 bucket.append(item)
             return gb.values()
 
         return self.f(lambda x: [f(b) for b in _(x)])
+
+    def distinct(self, fnc=lambda x: x):
+        return self.groupby(fnc, groupkey=False).map(lambda x: x[0])
+
+
+f = F()

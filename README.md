@@ -1,12 +1,14 @@
 # rel2tree
 
-Convert a list of records to a `JSON`-like structure.
+Convert your list of data into `JSON` serializable structure.
 
-## Tutorial
+## Motivation
 
-Let's suppose you have a set of data:
+Let's suppose you have a set of data given as a list of dicts:
 
 ```py
+import json
+
 [
   {"name": "Jane", "city": "New York", "sales": 23},
   {"name": "Joe", "city": "New York", "sales": 11},
@@ -20,7 +22,7 @@ Let's suppose you have a set of data:
 
 You may want a nice summary, something like this:
 
-```py
+```json
 [
   {
     "name": "Jane",
@@ -54,143 +56,168 @@ You may want a nice summary, something like this:
 ```
 
 This can be done relatively easily by iterating over the data
-set and building the final structure. This code is far from
-declarative (looking at the code itself you can not easily say
-the final data structure) and if the structure of the data gets
-more complex, or your requirements changes, your code can blow
-up fast.
+set and building the final structure.
+
+```py
+summary = {}
+for record in data:
+    this_person = summary.setdefault(record["name"], {
+        "name": record["name"],
+        "cities": {},
+        "sum": 0,
+    })
+    this_person_cities = this_person["cities"].setdefault(record["city"], {
+        "city": record["city"],
+        "sum": 0,
+    })
+    this_person_cities["sum"] += record["sales"]
+    this_person["sum"] += record["sum"]
+summary = list(summary.values())
+for person in summary:
+    person["cities"] = list(person["cities"].values())
+
+print(json.dumps(summary))
+```
+
+Although the above code works well, but it has some problems.
+
+- Not declarative: by looking at the code it is not trivial to tell the final data
+  structure.
+- Error-prone.
+- The complexity grows with more complex business logic
+  or by adding an additional level.
+- Not reusable.
 
 Let's see how you do it with `rel2tree`:
 
 ```py
-f = F().groupby(lambda x: x["name"], F().dict({
-    "name": groupkey(),
-    "cities": F().groupby(lambda x: x["city"], F().dict({
-        "city": groupkey(),
-        "sales": F().map(lambda x: x["sales"]).t(sum)
+from rel2tree import f  # NOQA
+
+summary = f.groupby(lambda x: x["name"], f.dict({
+    "name": f.groupkey(),
+    "cities": f.groupby(lambda x: x["city"], f.dict({
+        "city": f.groupkey(),
+        "sum": f.map(lambda x: x["sales"]).t(sum)
     })),
-    "sum": F().map(lambda x: x["sales"]).t(sum)
+    "sum": f.map(lambda x: x["sales"]).t(sum)
 }))
 
-result = f(data)
+print(json.dumps(summary(data)))
 ```
 
-The code above can be tricky for the first sight, but definitively
-much more declarative.
+## Tutorial
 
-## `map`, `filter`, `sort`
+### `map`, `sort`, `filter`, `distinct`
 
-The most basic usage of `rel2tree` is mapping a list.
-Say we have a list and want to duplicate of its elements.
+The only object one can import from `rel2tree` is `f`, which is of type `F`
+so we will call it an `F` object.
+`f` is callable, but - on it's own does nothing:
 
 ```py
-data = [1, 2, 3, 4]
-result = list(map(lambda x: 2 * x, data))
+print(f(2))
+# 2
 ```
 
-With `rel2tree` it looks like this:
+Let's say we have a list of numbers (`numbers`) and we want
+to duplicate all of it's elements. This can be done in many ways:
+
+- using a list comprehension:
+  ```py
+  out = [2 * x for x in numbers]
+  ```
+- using map:
+  ```py
+  out = map(lambda x: 2 * x, numbers)
+  ```
+- defining a function (for reusability)
+  ```py
+  import functools
+  dup = functools.partial(map, lambda x: 2 * x)
+  out = dup(numbers)
+  ```
+
+Using an `f` it looks like this:
 
 ```py
-data = [1, 2, 3, 4]
-f = F().map(lambda x: 2 * x)
-result = f(data)
+numbers = range(15)
+dup = f.map(lambda x: 2 * x)
+out = dup(numbers)
 ```
 
-Note that in the above example `f` can be thought of as a
-recipe. It can be reused with a different set of data any time.
+This simply made our third approach a little more terse.
 
-Now we can further modify our list by mapping again. Say we
-want to add 5 to each elements:
+Now what if our task is to add 1 to each element after
+duplication? Can we reuse our `dup` function? As
+the result of `f.map` has the same type as `f`, we can
+use map again:
 
 ```py
-f2 = f.map(lambda x: x + 5)
-result = f2(data)
-result = [7, 9, 11, 13]
+dupplus1 = dup.map(lambda x: x + 1)
 ```
 
-To filter our list, we need a function that returns `True` for
-elements to keep in the list.
+`f.sort(fnc)` sorts our list based on the value of `fnc`
+applied to the items (just as the `key` argument of python's)
+`sorted`. `f.filter(fnc)` keeps only those `i` items, where
+`fnc(i)` is ture(ish). These methods also return `F`s
+(internally the type of `f` is `F`) so they are chainable.
+The `F` below first duplicates, then filters out big
+numbers and finally sorts them. (`f.sort`, without a function sorts the elements.)
 
 ```py
-f3 = f2.filter(lambda x: x < 10)
-result = f3(data)
-result = [7, 9]
+f.map(lambda x: 2 * x).filter(lambda x: x < 10).sort()
 ```
 
-Sorting works the same as python's `sorted` function:
+### `dict`
 
-```py
-f4 = f3.sort(lambda x: -x)
-result = f4(data)
-result = [9, 7]
-```
-
-## `dict`
-
-The usage of `dict` is easiest to describe with an example:
-
-```py
-data = [1, 2, 3, 4]
-f = F().dict({
-    "list": F(),
-    "even": F().filter(lambda x: x % 2 == 0),
-    "odd": F().filter(lambda x: x % 2 != 0),
-})
-result = f(data)
-```
-
-Here is the result:
+Back to our `numbers`, but with the desired output of
 
 ```json
 {
-  "list": [1, 2, 3, 4],
-  "even": [2, 4],
-  "odd": [1, 3]
+  "even": [0, 2, 4, 6, 8, 10, 12, 14],
+  "odd": [1, 3, 5, 7, 9, 11, 13]
 }
 ```
 
-For each key in the dictionary we specify an `F` expression.
-The full list will be processed by each of these `F`-s and the
-result will be a single dictionary.
-
-## `groupby`
-
-`groupby` needs a function as its first argument. This function
-will be called with each items in the list to calculate a group key. Items with the same group keys are collected in lists.
-The result will be a list of these groups.
+We can combine the dict method to achive this:
 
 ```py
-data = range(10)
-f = F().groupby(lambda x: x % 2)
-print(json.dumps(f(data)))
+summary = f.dict({
+    "even": f.filter(lambda x: (x % 2 == 0)),
+    "odd": f.filter(lambda x: (x % 2 == 1)),
+})
 ```
+
+If the dictionary values are `F` objects, those objects will be called with
+the input list to form the final values, otherwise the values will be left as is.
+
+### `groupby`
+
+To generalize the above example, we can group our numbers based on the remainder
+devided by, say, 3:
+
+```py
+summary = f.groupby(lambda x: x % 3)
+# [[0, 3, 6, 9, 12], [1, 4, 7, 10, 13], [2, 5, 8, 11, 14]]
+```
+
+To make it more informative, the desired output should be:
 
 ```json
-[[0, 2, 4, 6, 8], [1, 3, 5, 7, 9]]
+[
+  { "remainder": 0, "numbers": [0, 3, 6, 9, 12] },
+  { "remainder": 1, "numbers": [1, 4, 7, 10, 13] },
+  { "remainder": 2, "numbers": [2, 5, 8, 11, 14] }
+]
 ```
 
-An `F` can be given to `groupby` as the second argument.
-In this case each list will be given to this `F`. To continue
-our example above, we may calculate the sum of even and odd
-numbers:
+This can be done by using `groupkey`:
 
 ```py
-data = range(10)
-f = F().groupby(lambda x: x % 2, F().t(sum))
-print(json.dumps(f(data)))
-# [20, 25]
+summary = f.groupby(lambda x: x % 3, f.dict({
+  "remainder": f.groupkey(),
+  "numbers": f
+}))
 ```
 
-This last example shows how to apply an arbitrary function
-on the whole list: `f.t(func)`. In this case we get
-`func(lst)` as a result. `t` means `f.t(func)` does not return
-an `F` expression but an instance of class `T`. The difference
-is that you can not further chain `T`-s, they are 'terminating'
-the chain. Most `F` methods assume they will be used with lists.
-If you know your function will return a list which you may
-want to further manipulate by chaining, you can use
-`f.f(func)`.
-
-## `const` and `groupkey`
-
-TODO
+`f.groupkey(level=0)` gives the deepest level group key, while `f.groupkey(1)`
+is the one level above group key in case of nested `groupby`'s.

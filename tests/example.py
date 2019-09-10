@@ -1,6 +1,6 @@
 import json
 
-from rel2tree import F, groupkey
+from rel2tree import f
 
 
 data = [
@@ -13,41 +13,59 @@ data = [
     {"name": "Jane", "city": "New York", "sales": 7},
 ]
 
-f = F().groupby(
-    lambda x: x["name"],
-    F().dict(
-        {
-            "name": groupkey(),
-            "cities": F().groupby(
-                lambda x: x["city"],
-                F().dict(
-                    {"city": groupkey(), "sales": F().map(lambda x: x["sales"]).t(sum)}
-                ),
-            ),
-            "sum": F().map(lambda x: x["sales"]).t(sum),
-        }
-    ),
-)
+summary = {}
+for record in data:
+    this_person = summary.setdefault(record["name"], {
+        "name": record["name"],
+        "cities": {},
+        "sum": 0,
+    })
+    this_person_cities = this_person["cities"].setdefault(record["city"], {
+        "city": record["city"],
+        "sum": 0,
+    })
+    this_person_cities["sum"] += record["sales"]
+    this_person["sum"] += record["sales"]
+summary = list(summary.values())
+for person in summary:
+    person["cities"] = list(person["cities"].values())
 
-print(json.dumps(f(data)))
+print(json.dumps(summary))
 
+#
 
-data = [1, 2, 3, 4]
-f = F().dict(
-    {
-        "list": F(),
-        "even": F().filter(lambda x: x % 2 == 0),
-        "odd": F().filter(lambda x: x % 2 != 0),
-    }
-)
-print(json.dumps(f(data)))
+summary = f.groupby(lambda x: x["name"], f.dict({
+    "name": f.groupkey(),
+    "cities": f.groupby(lambda x: x["city"], f.dict({
+        "city": f.groupkey(),
+        "sum": f.map(lambda x: x["sales"]).t(sum)
+    })),
+    "sum": f.map(lambda x: x["sales"]).t(sum)
+}))
 
+print(json.dumps(summary(data)))
 
-data = range(10)
-f = F().groupby(lambda x: x % 2)
-print(json.dumps(f(data)))
+#
 
+numbers = range(15)
+summary = f.dict({
+    "even": f.filter(lambda x: (x % 2 == 0)),
+    "odd": f.filter(lambda x: (x % 2 == 1)),
+})
 
-data = range(10)
-f = F().groupby(lambda x: x % 2, F().t(sum))
-print(json.dumps(f(data)))
+print(json.dumps(summary(numbers)))
+
+#
+
+summary = f.groupby(lambda x: x % 3)
+
+print(json.dumps(summary(numbers)))
+
+#
+
+summary = f.groupby(lambda x: x % 3, f.dict({
+  "remainder": f.groupkey(),
+  "numbers": f
+}))
+
+print(json.dumps(summary(numbers)))
