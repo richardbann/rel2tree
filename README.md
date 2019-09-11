@@ -1,5 +1,7 @@
 # rel2tree
 
+[![PyPI version](https://badge.fury.io/py/rel2tree.svg)](https://badge.fury.io/py/rel2tree)
+
 Convert your list of data into `JSON` serializable structure.
 
 ## Motivation
